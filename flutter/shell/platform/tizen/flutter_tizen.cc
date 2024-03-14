@@ -240,6 +240,11 @@ void* FlutterDesktopViewGetNativeHandle(FlutterDesktopViewRef view_ref) {
   return view->tizen_view()->GetNativeHandle();
 }
 
+uint32_t FlutterDesktopViewGetResourceId(FlutterDesktopViewRef view_ref) {
+  flutter::FlutterTizenView* view = ViewFromHandle(view_ref);
+  return view->tizen_view()->GetResourceId();
+}
+
 void FlutterDesktopViewResize(FlutterDesktopViewRef view,
                               int32_t width,
                               int32_t height) {
@@ -291,7 +296,7 @@ void FlutterDesktopViewOnKeyEvent(FlutterDesktopViewRef view,
   }
 #else
   ViewFromHandle(view)->OnKey(key, string, nullptr, modifiers, scan_code,
-                              is_down);
+                              device_name, is_down);
 #endif
 }
 

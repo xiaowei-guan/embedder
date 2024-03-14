@@ -309,7 +309,7 @@ void TizenWindowElementary::RegisterEventHandlers() {
           self->view_delegate_->OnKey(
               key_event->key, key_event->string, key_event->compose,
               EvasModifierToEcoreEventModifiers(key_event->modifiers),
-              key_event->keycode, true);
+              key_event->keycode, evas_device_name_get(key_event->dev), true);
         }
       }
     }
@@ -333,7 +333,7 @@ void TizenWindowElementary::RegisterEventHandlers() {
               self->view_delegate_->OnKey(
                   key_event->key, key_event->string, key_event->compose,
                   EvasModifierToEcoreEventModifiers(key_event->modifiers),
-                  key_event->keycode, false);
+                  key_event->keycode, nullptr, false);
             }
           }
         }
@@ -411,6 +411,10 @@ int32_t TizenWindowElementary::GetDpi() {
 uintptr_t TizenWindowElementary::GetWindowId() {
   return ecore_evas_window_get(
       ecore_evas_ecore_evas_get(evas_object_evas_get(elm_win_)));
+}
+
+uint32_t TizenWindowElementary::GetResourceId() {
+  return 0;
 }
 
 void TizenWindowElementary::SetPreferredOrientations(

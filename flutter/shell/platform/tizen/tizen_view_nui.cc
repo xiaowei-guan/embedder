@@ -66,6 +66,10 @@ uintptr_t TizenViewNui::GetWindowId() {
   return default_window_id_;
 }
 
+uint32_t TizenViewNui::GetResourceId() {
+  return 0;
+}
+
 void TizenViewNui::Show() {
   // Do nothing.
 }
@@ -93,7 +97,8 @@ void TizenViewNui::OnKey(const char* device_name,
   }
 
   if (!handled) {
-    view_delegate_->OnKey(key, string, compose, modifiers, scan_code, is_down);
+    view_delegate_->OnKey(key, string, compose, modifiers, scan_code,
+                          device_name, is_down);
   }
 }
 

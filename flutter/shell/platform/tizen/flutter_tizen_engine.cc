@@ -216,7 +216,10 @@ bool FlutterTizenEngine::RunEngine() {
     vsync_waiter_ = std::make_unique<TizenVsyncWaiter>(this);
     args.vsync_callback = [](void* user_data, intptr_t baton) -> void {
       auto* engine = static_cast<FlutterTizenEngine*>(user_data);
-      engine->vsync_waiter_->AsyncWaitForVsync(baton);
+      std::lock_guard<std::mutex> lock(engine->vsync_mutex_);
+      if (engine->vsync_waiter_) {
+        engine->vsync_waiter_->AsyncWaitForVsync(baton);
+      }
     };
   }
 #endif
@@ -244,7 +247,7 @@ bool FlutterTizenEngine::RunEngine() {
 
   if (IsHeaded()) {
     texture_registrar_ = std::make_unique<FlutterTizenTextureRegistrar>(this);
-    key_event_channel_ = std::make_unique<KeyEventChannel>(
+    keyboard_channel_ = std::make_unique<KeyboardChannel>(
         internal_plugin_registrar_->messenger(),
         [this](const FlutterKeyEvent& event, FlutterKeyEventCallback callback,
                void* user_data) { SendKeyEvent(event, callback, user_data); });
@@ -266,8 +269,11 @@ bool FlutterTizenEngine::StopEngine() {
       callback(registrar);
     }
 #ifndef WEARABLE_PROFILE
-    if (vsync_waiter_) {
-      vsync_waiter_.reset();
+    {
+      std::lock_guard<std::mutex> lock(vsync_mutex_);
+      if (vsync_waiter_) {
+        vsync_waiter_.reset();
+      }
     }
 #endif
     FlutterEngineResult result = embedder_api_.Shutdown(engine_);

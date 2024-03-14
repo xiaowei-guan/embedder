@@ -266,7 +266,7 @@ void TizenViewElementary::RegisterEventHandlers() {
           self->view_delegate_->OnKey(
               key_event->key, key_event->string, key_event->compose,
               EvasModifierToEcoreEventModifiers(key_event->modifiers),
-              key_event->keycode, true);
+              key_event->keycode, evas_device_name_get(key_event->dev), true);
         }
       }
     }
@@ -292,7 +292,7 @@ void TizenViewElementary::RegisterEventHandlers() {
               self->view_delegate_->OnKey(
                   key_event->key, key_event->string, key_event->compose,
                   EvasModifierToEcoreEventModifiers(key_event->modifiers),
-                  key_event->keycode, false);
+                  key_event->keycode, nullptr, false);
             }
           }
         }
@@ -360,6 +360,10 @@ int32_t TizenViewElementary::GetDpi() {
 uintptr_t TizenViewElementary::GetWindowId() {
   return ecore_evas_window_get(
       ecore_evas_ecore_evas_get(evas_object_evas_get(container_)));
+}
+
+uint32_t TizenViewElementary::GetResourceId() {
+  return 0;
 }
 
 void TizenViewElementary::Show() {
