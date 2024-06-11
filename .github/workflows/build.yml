@@ -8,7 +8,7 @@ jobs:
 
     strategy:
       matrix:
-        api-version: [5.5, 6.5]
+        api-version: ['6.0', '6.5']
         arch: [arm, arm64, x86]
         include:
           - arch: arm
@@ -19,11 +19,11 @@ jobs:
             triple: i686-linux-gnu
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           path: src
 
-      - uses: actions/cache@v3
+      - uses: actions/cache@v4
         with:
           path: src/sysroot*
           key: sysroot-${{ matrix.api-version }}
@@ -43,51 +43,56 @@ jobs:
           gclient config --name=src --unmanaged https://github.com/${{ github.repository }}
           gclient sync -v --no-history --shallow
 
+      - name: Generate Tizen 6.0 sysroot
+        if: ${{ matrix.api-version == '6.0' }}
+        run: src/tools/generate_sysroot.py --out src/sysroot-6.0
+
       - name: Generate Tizen 6.5 sysroot
-        if: ${{ matrix.api-version == 6.5 }}
+        if: ${{ matrix.api-version == '6.5' }}
         run: src/tools/generate_sysroot.py --api-version 6.5 --out src/sysroot-6.5
 
-      - name: Build for Tizen 5.5
-        if: ${{ matrix.api-version == 5.5 }}
+      - name: Build for Tizen 6.0
+        if: ${{ matrix.api-version == '6.0' }}
         run: |
           src/tools/gn \
             --target-cpu ${{ matrix.arch }} \
             --target-toolchain /usr/lib/llvm-12 \
+            --target-sysroot src/sysroot-6.0/${{ matrix.arch }} \
             --target-dir build
           ninja -C src/out/build
 
       - name: Build for Tizen 6.5
-        if: ${{ matrix.api-version == 6.5 }}
+        if: ${{ matrix.api-version == '6.5' }}
         run: |
           src/tools/gn \
             --target-cpu ${{ matrix.arch }} \
             --target-toolchain /usr/lib/llvm-12 \
             --target-sysroot src/sysroot-6.5/${{ matrix.arch }} \
-            --api-version 6.5 --system-cxx \
+            --api-version 6.5 \
             --target-dir build
           ninja -C src/out/build
 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: tizen-${{ matrix.api-version }}-${{ matrix.arch }}
           path: src/out/build/libflutter_tizen*.so
           if-no-files-found: error
 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: tizen-${{ matrix.api-version }}-${{ matrix.arch }}_unittests
           path: src/out/build/flutter_tizen_unittests
           if-no-files-found: error
 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         if: ${{ github.event_name == 'push' }}
         with:
           name: tizen-${{ matrix.api-version }}-${{ matrix.arch }}_symbols
           path: src/out/build/so.unstripped/libflutter_tizen*.so
           if-no-files-found: error
 
-      - uses: actions/upload-artifact@v3
-        if: ${{ matrix.arch == 'arm' && matrix.api-version == 5.5 }}
+      - uses: actions/upload-artifact@v4
+        if: ${{ matrix.arch == 'arm' && matrix.api-version == '6.0' }}
         with:
           name: tizen-common
           path: |
@@ -101,21 +106,21 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
-      - uses: docker/setup-qemu-action@v2
+      - uses: docker/setup-qemu-action@v3
         with:
           platforms: arm
 
-      - uses: docker/login-action@v2
+      - uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: actions/download-artifact@v3
+      - uses: actions/download-artifact@v4
         with:
-          name: tizen-5.5-arm_unittests
+          name: tizen-6.0-arm_unittests
 
       - name: Download engine
         run: |
@@ -134,9 +139,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
-      - uses: actions/download-artifact@v3
+      - uses: actions/download-artifact@v4
 
       - name: Create archives
         run: |
@@ -148,7 +153,7 @@ jobs:
       - name: Set variable
         run: echo "SHORT_SHA=$(git rev-parse --short $GITHUB_SHA)" >> $GITHUB_ENV
 
-      - uses: softprops/action-gh-release@v1
+      - uses: softprops/action-gh-release@v2
         with:
           name: tizen-embedder-${{ env.SHORT_SHA }}
           tag_name: ${{ env.SHORT_SHA }}

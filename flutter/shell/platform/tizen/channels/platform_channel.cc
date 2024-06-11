@@ -81,11 +81,8 @@ PlatformChannel::PlatformChannel(BinaryMessenger* messenger,
           kChannelName,
           &JsonMethodCodec::GetInstance())),
       view_(view) {
-#if defined(MOBILE_PROFILE) || defined(COMMON_PROFILE)
-  int ret = cbhm_open_service(&cbhm_handle_);
-  if (ret != CBHM_ERROR_NONE) {
-    FT_LOG(Error) << "Failed to initialize the clipboard service.";
-  }
+#ifdef CLIPBOARD_SUPPORT
+  tizen_clipboard_ = std::make_unique<TizenClipboard>(view);
 #endif
 
   channel_->SetMethodCallHandler(
@@ -95,11 +92,7 @@ PlatformChannel::PlatformChannel(BinaryMessenger* messenger,
       });
 }
 
-PlatformChannel::~PlatformChannel() {
-#if defined(MOBILE_PROFILE) || defined(COMMON_PROFILE)
-  cbhm_close_service(cbhm_handle_);
-#endif
-}
+PlatformChannel::~PlatformChannel() {}
 
 void PlatformChannel::HandleMethodCall(
     const MethodCall<rapidjson::Document>& method_call,
@@ -128,15 +121,27 @@ void PlatformChannel::HandleMethodCall(
                     "Clipboard API only supports text.");
       return;
     }
-    GetClipboardData([result = result.release()](const std::string& data) {
-      rapidjson::Document document;
-      document.SetObject();
-      rapidjson::Document::AllocatorType& allocator = document.GetAllocator();
-      document.AddMember(rapidjson::Value(kTextKey, allocator),
-                         rapidjson::Value(data, allocator), allocator);
-      result->Success(document);
-      delete result;
-    });
+    auto* result_ptr = result.release();
+    if (!GetClipboardData([result_ptr](std::optional<std::string> data) {
+          if (!data.has_value()) {
+            result_ptr->Error(kUnknownClipboardError, "Internal error.");
+            delete result_ptr;
+            return;
+          }
+
+          rapidjson::Document document;
+          document.SetObject();
+          rapidjson::Document::AllocatorType& allocator =
+              document.GetAllocator();
+          document.AddMember(rapidjson::Value(kTextKey, allocator),
+                             rapidjson::Value(data.value(), allocator),
+                             allocator);
+          result_ptr->Success(document);
+          delete result_ptr;
+        })) {
+      result_ptr->Error(kUnknownClipboardError, "Internal error.");
+      delete result_ptr;
+    };
   } else if (method == kSetClipboardDataMethod) {
     const rapidjson::Value& document = *arguments;
     auto iter = document.FindMember(kTextKey);
@@ -230,54 +235,26 @@ void PlatformChannel::HapticFeedbackVibrate(const std::string& feedback_type) {
   FeedbackManager::GetInstance().Vibrate();
 }
 
-void PlatformChannel::GetClipboardData(ClipboardCallback on_data) {
-  on_clipboard_data_ = std::move(on_data);
-
-#if defined(MOBILE_PROFILE) || defined(COMMON_PROFILE)
-  int ret = cbhm_selection_get(
-      cbhm_handle_, CBHM_SEL_TYPE_TEXT,
-      [](cbhm_h cbhm_handle, const char* buf, size_t len,
-         void* user_data) -> int {
-        auto* self = static_cast<PlatformChannel*>(user_data);
-        std::string data;
-        if (buf) {
-          data = std::string(buf, len);
-        }
-        self->on_clipboard_data_(data);
-        self->on_clipboard_data_ = nullptr;
-        return CBHM_ERROR_NONE;
-      },
-      this);
-  if (ret != CBHM_ERROR_NONE) {
-    if (ret == CBHM_ERROR_NO_DATA) {
-      FT_LOG(Info) << "No clipboard data available.";
-    } else {
-      FT_LOG(Error) << "Failed to get clipboard data.";
-    }
-    on_clipboard_data_("");
-    on_clipboard_data_ = nullptr;
-  }
+bool PlatformChannel::GetClipboardData(ClipboardCallback on_data) {
+#ifdef CLIPBOARD_SUPPORT
+  return tizen_clipboard_->GetData(std::move(on_data));
 #else
-  on_clipboard_data_(clipboard_);
-  on_clipboard_data_ = nullptr;
+  on_data(clipboard_);
+  return true;
 #endif
 }
 
 void PlatformChannel::SetClipboardData(const std::string& data) {
-#if defined(MOBILE_PROFILE) || defined(COMMON_PROFILE)
-  int ret = cbhm_selection_set(cbhm_handle_, CBHM_SEL_TYPE_TEXT, data.c_str(),
-                               data.length());
-  if (ret != CBHM_ERROR_NONE) {
-    FT_LOG(Error) << "Failed to set clipboard data.";
-  }
+#ifdef CLIPBOARD_SUPPORT
+  tizen_clipboard_->SetData(data);
 #else
   clipboard_ = data;
 #endif
 }
 
 bool PlatformChannel::ClipboardHasStrings() {
-#if defined(MOBILE_PROFILE) || defined(COMMON_PROFILE)
-  return cbhm_item_count_get(cbhm_handle_) > 0;
+#ifdef CLIPBOARD_SUPPORT
+  return tizen_clipboard_->HasStrings();
 #else
   return !clipboard_.empty();
 #endif

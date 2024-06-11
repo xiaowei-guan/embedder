@@ -5,17 +5,17 @@
 #ifndef EMBEDDER_PLATFORM_CHANNEL_H_
 #define EMBEDDER_PLATFORM_CHANNEL_H_
 
-#if defined(MOBILE_PROFILE) || defined(COMMON_PROFILE)
-#include <cbhm.h>
-#endif
-
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "flutter/shell/platform/common/client_wrapper/include/flutter/binary_messenger.h"
 #include "flutter/shell/platform/common/client_wrapper/include/flutter/method_channel.h"
+#ifdef CLIPBOARD_SUPPORT
+#include "flutter/shell/platform/tizen/tizen_clipboard.h"
+#endif
 #include "flutter/shell/platform/tizen/tizen_view_base.h"
 #include "rapidjson/document.h"
 
@@ -27,7 +27,8 @@ class PlatformChannel {
   virtual ~PlatformChannel();
 
  private:
-  using ClipboardCallback = std::function<void(const std::string& data)>;
+  using ClipboardCallback =
+      std::function<void(std::optional<std::string> data)>;
 
   void HandleMethodCall(
       const MethodCall<rapidjson::Document>& call,
@@ -36,7 +37,7 @@ class PlatformChannel {
   void SystemNavigatorPop();
   void PlaySystemSound(const std::string& sound_type);
   void HapticFeedbackVibrate(const std::string& feedback_type);
-  void GetClipboardData(ClipboardCallback on_data);
+  bool GetClipboardData(ClipboardCallback on_data);
   void SetClipboardData(const std::string& data);
   bool ClipboardHasStrings();
   void RestoreSystemUiOverlays();
@@ -52,19 +53,12 @@ class PlatformChannel {
 
   // A reference to the native view managed by FlutterTizenView.
   TizenViewBase* view_ = nullptr;
-
-#if defined(MOBILE_PROFILE) || defined(COMMON_PROFILE)
-  // The clipboard history manager.
-  cbhm_h cbhm_handle_ = nullptr;
+#ifdef CLIPBOARD_SUPPORT
+  std::unique_ptr<TizenClipboard> tizen_clipboard_;
 #else
   // A container that holds clipboard data during the engine lifetime.
-  //
-  // Only used by profiles that do not support the Tizen clipboard API
-  // (wearable and TV).
   std::string clipboard_;
 #endif
-
-  ClipboardCallback on_clipboard_data_ = nullptr;
 };
 
 }  // namespace flutter
