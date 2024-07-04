@@ -16,7 +16,7 @@
 #include "flutter/shell/platform/tizen/public/flutter_platform_view.h"
 #include "flutter/shell/platform/tizen/tizen_view.h"
 #ifdef NUI_SUPPORT
-#include "flutter/shell/platform/tizen/tizen_renderer_egl.h"
+#include "flutter/shell/platform/tizen/tizen_renderer_ecore_gl.h"
 #include "flutter/shell/platform/tizen/tizen_view_nui.h"
 #endif
 #include "flutter/shell/platform/tizen/tizen_window.h"

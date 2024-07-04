@@ -2,8 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "tizen_renderer_egl.h"
-
 #define EFL_BETA_API_SUPPORT
 #include <Ecore_Wl2.h>
 #include <GLES2/gl2.h>
@@ -16,19 +14,20 @@
 #include <tbm_surface_queue.h>
 
 #include "flutter/shell/platform/tizen/logger.h"
+#include "flutter/shell/platform/tizen/tizen_renderer_ecore_gl.h"
 
 namespace flutter {
 
-TizenRendererEgl::TizenRendererEgl() {}
+TizenRendererEcoreGL::TizenRendererEcoreGL() {}
 
-TizenRendererEgl::~TizenRendererEgl() {
+TizenRendererEcoreGL::~TizenRendererEcoreGL() {
   DestroySurface();
 }
 
-bool TizenRendererEgl::CreateSurface(void* render_target,
-                                     void* render_target_display,
-                                     int32_t width,
-                                     int32_t height) {
+bool TizenRendererEcoreGL::CreateSurface(void* render_target,
+                                         void* render_target_display,
+                                         int32_t width,
+                                         int32_t height) {
   if (render_target_display) {
     egl_display_ =
         eglGetDisplay(static_cast<wl_display*>(render_target_display));
@@ -113,7 +112,7 @@ bool TizenRendererEgl::CreateSurface(void* render_target,
   return true;
 }
 
-void TizenRendererEgl::DestroySurface() {
+void TizenRendererEcoreGL::DestroySurface() {
   if (egl_display_) {
     eglMakeCurrent(egl_display_, EGL_NO_SURFACE, EGL_NO_SURFACE,
                    EGL_NO_CONTEXT);
@@ -143,7 +142,7 @@ void TizenRendererEgl::DestroySurface() {
   }
 }
 
-bool TizenRendererEgl::ChooseEGLConfiguration() {
+bool TizenRendererEcoreGL::ChooseEGLConfiguration() {
   EGLint config_attribs[] = {
       // clang-format off
       EGL_SURFACE_TYPE,    EGL_WINDOW_BIT,
@@ -205,7 +204,7 @@ bool TizenRendererEgl::ChooseEGLConfiguration() {
   return true;
 }
 
-bool TizenRendererEgl::OnMakeCurrent() {
+bool TizenRendererEcoreGL::OnMakeCurrent() {
   if (!IsValid()) {
     return false;
   }
@@ -218,7 +217,7 @@ bool TizenRendererEgl::OnMakeCurrent() {
   return true;
 }
 
-bool TizenRendererEgl::OnClearCurrent() {
+bool TizenRendererEcoreGL::OnClearCurrent() {
   if (!IsValid()) {
     return false;
   }
@@ -231,7 +230,7 @@ bool TizenRendererEgl::OnClearCurrent() {
   return true;
 }
 
-bool TizenRendererEgl::OnMakeResourceCurrent() {
+bool TizenRendererEcoreGL::OnMakeResourceCurrent() {
   if (!IsValid()) {
     return false;
   }
@@ -244,7 +243,7 @@ bool TizenRendererEgl::OnMakeResourceCurrent() {
   return true;
 }
 
-bool TizenRendererEgl::OnPresent() {
+bool TizenRendererEcoreGL::OnPresent() {
   if (!IsValid()) {
     return false;
   }
@@ -257,14 +256,14 @@ bool TizenRendererEgl::OnPresent() {
   return true;
 }
 
-uint32_t TizenRendererEgl::OnGetFBO() {
+uint32_t TizenRendererEcoreGL::OnGetFBO() {
   if (!IsValid()) {
     return 999;
   }
   return 0;
 }
 
-void TizenRendererEgl::PrintEGLError() {
+void TizenRendererEcoreGL::PrintEGLError() {
   EGLint error = eglGetError();
   switch (error) {
 #define CASE_PRINT(value)                     \
@@ -293,15 +292,15 @@ void TizenRendererEgl::PrintEGLError() {
   }
 }
 
-bool TizenRendererEgl::IsSupportedExtension(const char* name) {
+bool TizenRendererEcoreGL::IsSupportedExtension(const char* name) {
   return strstr(egl_extension_str_.c_str(), name);
 }
 
-void TizenRendererEgl::ResizeSurface(int32_t width, int32_t height) {
+void TizenRendererEcoreGL::ResizeSurface(int32_t width, int32_t height) {
   // Do nothing.
 }
 
-void* TizenRendererEgl::OnProcResolver(const char* name) {
+void* TizenRendererEcoreGL::OnProcResolver(const char* name) {
   auto address = eglGetProcAddress(name);
   if (address != nullptr) {
     return reinterpret_cast<void*>(address);

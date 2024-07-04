@@ -45,21 +45,12 @@ class FlutterTizenView : public TizenViewEventHandlerDelegate {
   // Should be called before calling FlutterEngineRun using this view.
   void CreateRenderSurface(FlutterDesktopRendererType renderer_type);
 
+  void CreateRenderer(FlutterDesktopRendererType renderer_type);
+
   // Destroys current rendering surface if one has been allocated.
   void DestroyRenderSurface();
 
   void Resize(int32_t width, int32_t height);
-
-  // Callbacks for clearing context, settings context and swapping buffers,
-  // these are typically called on an engine-controlled (non-platform) thread.
-  bool OnMakeCurrent();
-  bool OnClearCurrent();
-  bool OnMakeResourceCurrent();
-  bool OnPresent();
-
-  uint32_t OnGetFBO();
-
-  void* OnProcResolver(const char* name);
 
   void OnResize(int32_t left,
                 int32_t top,
@@ -115,6 +106,8 @@ class FlutterTizenView : public TizenViewEventHandlerDelegate {
   FlutterTransformation GetFlutterTransformation() {
     return flutter_transformation_;
   }
+
+  TizenRenderer* GetRenderer() { return renderer_.get(); }
 
   void SendInitialGeometry();
 
@@ -203,6 +196,9 @@ class FlutterTizenView : public TizenViewEventHandlerDelegate {
 
   // A plugin to report input device information.
   std::unique_ptr<InputDeviceChannel> input_device_channel_;
+
+  // An interface between the Flutter rasterizer and the platform.
+  std::unique_ptr<TizenRenderer> renderer_;
 
   // The current view rotation degree.
   int32_t rotation_degree_ = 0;

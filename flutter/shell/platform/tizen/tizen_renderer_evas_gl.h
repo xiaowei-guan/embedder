@@ -9,13 +9,13 @@
 
 #include <Elementary.h>
 
-#include "flutter/shell/platform/tizen/tizen_renderer.h"
+#include "flutter/shell/platform/tizen/tizen_renderer_gl.h"
 
 namespace flutter {
 
 using OnPixelsDirty = std::function<void()>;
 
-class TizenRendererEvasGL : public TizenRenderer {
+class TizenRendererEvasGL : public TizenRendererGL {
  public:
   explicit TizenRendererEvasGL();
 

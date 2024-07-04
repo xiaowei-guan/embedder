@@ -61,9 +61,6 @@ class FlutterTizenEngine {
   FlutterTizenEngine(FlutterTizenEngine const&) = delete;
   FlutterTizenEngine& operator=(FlutterTizenEngine const&) = delete;
 
-  // Creates a GL renderer from the given type.
-  void CreateRenderer(FlutterDesktopRendererType renderer_type);
-
   // Starts running the engine with the given entrypoint. If null, defaults to
   // main().
   //
@@ -96,8 +93,6 @@ class FlutterTizenEngine {
   FlutterTizenTextureRegistrar* texture_registrar() {
     return texture_registrar_.get();
   }
-
-  TizenRenderer* renderer() { return renderer_.get(); }
 
   AppControlChannel* app_control_channel() {
     return app_control_channel_.get();
@@ -261,9 +256,6 @@ class FlutterTizenEngine {
   std::unique_ptr<TizenPlatformEventLoop> event_loop_;
 
   std::unique_ptr<TizenRenderEventLoop> render_loop_;
-
-  // An interface between the Flutter rasterizer and the platform.
-  std::unique_ptr<TizenRenderer> renderer_;
 
   std::mutex vsync_mutex_;
 
