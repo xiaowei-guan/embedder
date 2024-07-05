@@ -45,7 +45,7 @@ int64_t FlutterTizenTextureRegistrar::RegisterTexture(
     }
   }
   FlutterDesktopRendererType renderer_type = FlutterDesktopRendererType::kEGL;
-  if (dynamic_cast<TizenRendererEvasGL*>(engine_->view()->GetRenderer())) {
+  if (dynamic_cast<TizenRendererEvasGL*>(engine_->renderer())) {
     renderer_type = FlutterDesktopRendererType::kEvasGL;
   }
   std::unique_ptr<ExternalTexture> texture_gl =
@@ -116,15 +116,14 @@ FlutterTizenTextureRegistrar::CreateExternalTexture(
     case kFlutterDesktopGpuSurfaceTexture:
       ExternalTextureExtensionType gl_extension =
           ExternalTextureExtensionType::kNone;
-      if (engine_->view()->GetRenderer() &&
-          dynamic_cast<TizenRendererGL*>(engine_->view()->GetRenderer()) &&
-          dynamic_cast<TizenRendererGL*>(engine_->view()->GetRenderer())
+      if (engine_->renderer() &&
+          dynamic_cast<TizenRendererGL*>(engine_->renderer()) &&
+          dynamic_cast<TizenRendererGL*>(engine_->renderer())
               ->IsSupportedExtension("EGL_TIZEN_image_native_surface")) {
         gl_extension = ExternalTextureExtensionType::kNativeSurface;
-      } else if (engine_->view()->GetRenderer() &&
-                 dynamic_cast<TizenRendererGL*>(
-                     engine_->view()->GetRenderer()) &&
-                 dynamic_cast<TizenRendererGL*>(engine_->view()->GetRenderer())
+      } else if (engine_->renderer() &&
+                 dynamic_cast<TizenRendererGL*>(engine_->renderer()) &&
+                 dynamic_cast<TizenRendererGL*>(engine_->renderer())
                      ->IsSupportedExtension("EGL_EXT_image_dma_buf_import")) {
         gl_extension = ExternalTextureExtensionType::kDmaBuffer;
       }

@@ -20,6 +20,7 @@
 #endif
 #include "flutter/shell/platform/tizen/tizen_renderer_ecore_gl.h"
 #include "flutter/shell/platform/tizen/tizen_renderer_evas_gl.h"
+#include "flutter/shell/platform/tizen/tizen_renderer_vulkan.h"
 
 namespace flutter {
 
@@ -84,7 +85,7 @@ bool FlutterTizenEngine::RunEngine() {
     FT_LOG(Error) << "The engine has already started.";
     return false;
   }
-  if (IsHeaded() && !view_->GetRenderer()->IsValid()) {
+  if (IsHeaded() && !renderer()->IsValid()) {
     FT_LOG(Error) << "The display was not valid.";
     return false;
   }
@@ -139,7 +140,7 @@ bool FlutterTizenEngine::RunEngine() {
 
   FlutterTaskRunnerDescription render_task_runner = {};
 
-  if (IsHeaded() && dynamic_cast<TizenRendererEvasGL*>(view_->GetRenderer())) {
+  if (IsHeaded() && dynamic_cast<TizenRendererEvasGL*>(renderer())) {
     render_loop_ = std::make_unique<TizenRenderEventLoop>(
         std::this_thread::get_id(),  // main thread
         embedder_api_.GetCurrentTime,
@@ -148,7 +149,7 @@ bool FlutterTizenEngine::RunEngine() {
             FT_LOG(Error) << "Could not post an engine task.";
           }
         },
-        view_->GetRenderer());
+        renderer());
     render_task_runner.struct_size = sizeof(FlutterTaskRunnerDescription);
     render_task_runner.user_data = render_loop_.get();
     render_task_runner.runs_task_on_current_thread_callback =
@@ -200,7 +201,7 @@ bool FlutterTizenEngine::RunEngine() {
     engine->OnUpdateSemantics(update);
   };
 
-  if (IsHeaded() && dynamic_cast<TizenRendererEcoreGL*>(view_->GetRenderer())) {
+  if (IsHeaded() && dynamic_cast<TizenRendererEcoreGL*>(renderer())) {
     vsync_waiter_ = std::make_unique<TizenVsyncWaiter>(this);
     args.vsync_callback = [](void* user_data, intptr_t baton) -> void {
       auto* engine = static_cast<FlutterTizenEngine*>(user_data);
@@ -271,8 +272,16 @@ bool FlutterTizenEngine::StopEngine() {
   return false;
 }
 
-void FlutterTizenEngine::SetView(FlutterTizenView* view) {
+void FlutterTizenEngine::SetView(FlutterTizenView* view,
+                                 FlutterDesktopRendererType renderer_type) {
   view_ = view;
+  if (renderer_type == FlutterDesktopRendererType::kEvasGL) {
+    renderer_ = std::make_unique<TizenRendererEvasGL>(view_->tizen_view());
+  } else if (renderer_type == FlutterDesktopRendererType::kEGL) {
+    renderer_ = std::make_unique<TizenRendererEcoreGL>(view_->tizen_view());
+  } else {
+    renderer_ = std::make_unique<TizenRendererVulkan>(view_->tizen_view());
+  }
 }
 
 void FlutterTizenEngine::AddPluginRegistrarDestructionCallback(
@@ -419,40 +428,39 @@ FlutterRendererConfig FlutterTizenEngine::GetRendererConfig() {
     config.open_gl.make_current = [](void* user_data) -> bool {
       auto* engine = static_cast<FlutterTizenEngine*>(user_data);
       if (!engine->view() ||
-          !dynamic_cast<TizenRendererGL*>(engine->view()->GetRenderer())) {
+          !dynamic_cast<TizenRendererGL*>(engine->renderer())) {
         return false;
       }
 
-      return dynamic_cast<TizenRendererGL*>(engine->view()->GetRenderer())
+      return dynamic_cast<TizenRendererGL*>(engine->renderer())
           ->OnMakeCurrent();
     };
     config.open_gl.make_resource_current = [](void* user_data) -> bool {
       auto* engine = static_cast<FlutterTizenEngine*>(user_data);
       if (!engine->view() ||
-          !dynamic_cast<TizenRendererGL*>(engine->view()->GetRenderer())) {
+          !dynamic_cast<TizenRendererGL*>(engine->renderer())) {
         return false;
       }
-      return dynamic_cast<TizenRendererGL*>(engine->view()->GetRenderer())
+      return dynamic_cast<TizenRendererGL*>(engine->renderer())
           ->OnMakeResourceCurrent();
     };
     config.open_gl.clear_current = [](void* user_data) -> bool {
       auto* engine = static_cast<FlutterTizenEngine*>(user_data);
       if (!engine->view() ||
-          !dynamic_cast<TizenRendererGL*>(engine->view()->GetRenderer())) {
+          !dynamic_cast<TizenRendererGL*>(engine->renderer())) {
         return false;
       }
-      return dynamic_cast<TizenRendererGL*>(engine->view()->GetRenderer())
+      return dynamic_cast<TizenRendererGL*>(engine->renderer())
           ->OnClearCurrent();
     };
     config.open_gl.present = [](void* user_data) -> bool {
       auto* engine = static_cast<FlutterTizenEngine*>(user_data);
       if (!engine->view() ||
-          !dynamic_cast<TizenRendererGL*>(engine->view()->GetRenderer())) {
+          !dynamic_cast<TizenRendererGL*>(engine->renderer())) {
         return false;
       }
       bool result =
-          dynamic_cast<TizenRendererGL*>(engine->view()->GetRenderer())
-              ->OnPresent();
+          dynamic_cast<TizenRendererGL*>(engine->renderer())->OnPresent();
 #ifdef NUI_SUPPORT
       if (auto* nui_view = dynamic_cast<flutter::TizenViewNui*>(
               engine->view()->tizen_view())) {
@@ -464,11 +472,10 @@ FlutterRendererConfig FlutterTizenEngine::GetRendererConfig() {
     config.open_gl.fbo_callback = [](void* user_data) -> uint32_t {
       auto* engine = static_cast<FlutterTizenEngine*>(user_data);
       if (!engine->view() ||
-          !dynamic_cast<TizenRendererGL*>(engine->view()->GetRenderer())) {
+          !dynamic_cast<TizenRendererGL*>(engine->renderer())) {
         return false;
       }
-      return dynamic_cast<TizenRendererGL*>(engine->view()->GetRenderer())
-          ->OnGetFBO();
+      return dynamic_cast<TizenRendererGL*>(engine->renderer())->OnGetFBO();
     };
     config.open_gl.surface_transformation =
         [](void* user_data) -> FlutterTransformation {
@@ -482,10 +489,10 @@ FlutterRendererConfig FlutterTizenEngine::GetRendererConfig() {
                                          const char* name) -> void* {
       auto* engine = static_cast<FlutterTizenEngine*>(user_data);
       if (!engine->view() ||
-          !dynamic_cast<TizenRendererGL*>(engine->view()->GetRenderer())) {
+          !dynamic_cast<TizenRendererGL*>(engine->renderer())) {
         return nullptr;
       }
-      return dynamic_cast<TizenRendererGL*>(engine->view()->GetRenderer())
+      return dynamic_cast<TizenRendererGL*>(engine->renderer())
           ->OnProcResolver(name);
     };
     config.open_gl.gl_external_texture_frame_callback =

@@ -6,7 +6,9 @@
 #include "flutter/shell/platform/tizen/tizen_renderer_vulkan.h"
 
 namespace flutter {
-TizenRendererVulkan::TizenRendererVulkan() {}
+TizenRendererVulkan::TizenRendererVulkan(TizenViewBase* view) {
+  Create(view);
+}
 TizenRendererVulkan::~TizenRendererVulkan() {}
 bool TizenRendererVulkan::CreateSurface(void* render_target,
                                         void* render_target_display,

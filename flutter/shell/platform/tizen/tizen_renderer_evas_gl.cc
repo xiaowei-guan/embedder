@@ -5,6 +5,8 @@
 #include "flutter/shell/platform/tizen/tizen_renderer_evas_gl.h"
 #include "flutter/shell/platform/tizen/logger.h"
 #include "flutter/shell/platform/tizen/tizen_evas_gl_helper.h"
+#include "flutter/shell/platform/tizen/tizen_view.h"
+#include "flutter/shell/platform/tizen/tizen_window.h"
 
 // g_evas_gl is shared with ExternalTextureSurfaceEGL and
 // ExternalTextureSurfaceEvasGL.
@@ -13,7 +15,9 @@ EVAS_GL_GLOBAL_GLES2_DEFINE();
 
 namespace flutter {
 
-TizenRendererEvasGL::TizenRendererEvasGL() {}
+TizenRendererEvasGL::TizenRendererEvasGL(TizenViewBase* view) {
+  Create(view);
+}
 
 TizenRendererEvasGL::~TizenRendererEvasGL() {
   DestroySurface();

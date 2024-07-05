@@ -6,6 +6,7 @@
 #define EMBEDDER_TIZEN_RENDERER_H_
 
 #include <cstdint>
+#include "flutter/shell/platform/tizen/tizen_view_base.h"
 
 namespace flutter {
 
@@ -28,6 +29,7 @@ class TizenRenderer {
 
  protected:
   bool is_valid_ = false;
+  bool Create(TizenViewBase* view);
 };
 
 }  // namespace flutter

@@ -109,6 +109,7 @@ template("embedder") {
       "system_utils.cc",
       "tizen_event_loop.cc",
       "tizen_input_method_context.cc",
+      "tizen_renderer.cc",
       "tizen_renderer_ecore_gl.cc",
       "tizen_renderer_evas_gl.cc",
       "tizen_renderer_vulkan.cc",

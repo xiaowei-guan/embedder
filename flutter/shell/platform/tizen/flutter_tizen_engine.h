@@ -74,11 +74,14 @@ class FlutterTizenEngine {
   bool StopEngine();
 
   // Sets the view that is displaying this engine's content.
-  void SetView(FlutterTizenView* view);
+  void SetView(FlutterTizenView* view,
+               FlutterDesktopRendererType renderer_type);
 
   // The view displaying this engine's content, if any. This will be null for
   // headless engines.
   FlutterTizenView* view() { return view_; }
+
+  TizenRenderer* renderer() { return renderer_.get(); }
 
   FlutterDesktopMessengerRef messenger() { return messenger_.get(); }
 
@@ -256,6 +259,9 @@ class FlutterTizenEngine {
   std::unique_ptr<TizenPlatformEventLoop> event_loop_;
 
   std::unique_ptr<TizenRenderEventLoop> render_loop_;
+
+  // An interface between the Flutter rasterizer and the platform.
+  std::unique_ptr<TizenRenderer> renderer_;
 
   std::mutex vsync_mutex_;
 
