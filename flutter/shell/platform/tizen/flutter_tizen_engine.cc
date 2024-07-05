@@ -80,12 +80,32 @@ FlutterTizenEngine::~FlutterTizenEngine() {
   StopEngine();
 }
 
+void FlutterTizenEngine::CreateRenderer(
+    FlutterDesktopRendererType renderer_type) {
+  if (renderer_type == FlutterDesktopRendererType::kEvasGL) {
+    renderer_ = std::make_unique<TizenRendererEvasGL>(view_->tizen_view());
+    render_loop_ = std::make_unique<TizenRenderEventLoop>(
+        std::this_thread::get_id(),  // main thread
+        embedder_api_.GetCurrentTime,
+        [this](const auto* task) {
+          if (embedder_api_.RunTask(this->engine_, task) != kSuccess) {
+            FT_LOG(Error) << "Could not post an engine task.";
+          }
+        },
+        renderer_.get());
+  } else if (renderer_type == FlutterDesktopRendererType::kEGL) {
+    renderer_ = std::make_unique<TizenRendererEcoreGL>(view_->tizen_view());
+  } else {
+    renderer_ = std::make_unique<TizenRendererVulkan>(view_->tizen_view());
+  }
+}
+
 bool FlutterTizenEngine::RunEngine() {
   if (engine_ != nullptr) {
     FT_LOG(Error) << "The engine has already started.";
     return false;
   }
-  if (IsHeaded() && !renderer()->IsValid()) {
+  if (IsHeaded() && !renderer_->IsValid()) {
     FT_LOG(Error) << "The display was not valid.";
     return false;
   }
@@ -140,16 +160,7 @@ bool FlutterTizenEngine::RunEngine() {
 
   FlutterTaskRunnerDescription render_task_runner = {};
 
-  if (IsHeaded() && dynamic_cast<TizenRendererEvasGL*>(renderer())) {
-    render_loop_ = std::make_unique<TizenRenderEventLoop>(
-        std::this_thread::get_id(),  // main thread
-        embedder_api_.GetCurrentTime,
-        [this](const auto* task) {
-          if (embedder_api_.RunTask(this->engine_, task) != kSuccess) {
-            FT_LOG(Error) << "Could not post an engine task.";
-          }
-        },
-        renderer());
+  if (IsHeaded() && dynamic_cast<TizenRendererEvasGL*>(renderer_.get())) {
     render_task_runner.struct_size = sizeof(FlutterTaskRunnerDescription);
     render_task_runner.user_data = render_loop_.get();
     render_task_runner.runs_task_on_current_thread_callback =
@@ -201,7 +212,7 @@ bool FlutterTizenEngine::RunEngine() {
     engine->OnUpdateSemantics(update);
   };
 
-  if (IsHeaded() && dynamic_cast<TizenRendererEcoreGL*>(renderer())) {
+  if (IsHeaded() && dynamic_cast<TizenRendererEcoreGL*>(renderer_.get())) {
     vsync_waiter_ = std::make_unique<TizenVsyncWaiter>(this);
     args.vsync_callback = [](void* user_data, intptr_t baton) -> void {
       auto* engine = static_cast<FlutterTizenEngine*>(user_data);
@@ -275,13 +286,7 @@ bool FlutterTizenEngine::StopEngine() {
 void FlutterTizenEngine::SetView(FlutterTizenView* view,
                                  FlutterDesktopRendererType renderer_type) {
   view_ = view;
-  if (renderer_type == FlutterDesktopRendererType::kEvasGL) {
-    renderer_ = std::make_unique<TizenRendererEvasGL>(view_->tizen_view());
-  } else if (renderer_type == FlutterDesktopRendererType::kEGL) {
-    renderer_ = std::make_unique<TizenRendererEcoreGL>(view_->tizen_view());
-  } else {
-    renderer_ = std::make_unique<TizenRendererVulkan>(view_->tizen_view());
-  }
+  CreateRenderer(renderer_type);
 }
 
 void FlutterTizenEngine::AddPluginRegistrarDestructionCallback(

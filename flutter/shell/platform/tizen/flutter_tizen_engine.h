@@ -61,6 +61,9 @@ class FlutterTizenEngine {
   FlutterTizenEngine(FlutterTizenEngine const&) = delete;
   FlutterTizenEngine& operator=(FlutterTizenEngine const&) = delete;
 
+  // Creates a GL renderer from the given type.
+  void CreateRenderer(FlutterDesktopRendererType renderer_type);
+
   // Starts running the engine with the given entrypoint. If null, defaults to
   // main().
   //
@@ -81,8 +84,6 @@ class FlutterTizenEngine {
   // headless engines.
   FlutterTizenView* view() { return view_; }
 
-  TizenRenderer* renderer() { return renderer_.get(); }
-
   FlutterDesktopMessengerRef messenger() { return messenger_.get(); }
 
   IncomingMessageDispatcher* message_dispatcher() {
@@ -96,6 +97,8 @@ class FlutterTizenEngine {
   FlutterTizenTextureRegistrar* texture_registrar() {
     return texture_registrar_.get();
   }
+
+  TizenRenderer* renderer() { return renderer_.get(); }
 
   AppControlChannel* app_control_channel() {
     return app_control_channel_.get();
