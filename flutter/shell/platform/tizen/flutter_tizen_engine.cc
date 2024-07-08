@@ -94,7 +94,8 @@ void FlutterTizenEngine::CreateRenderer(
         },
         renderer_.get());
   } else if (renderer_type == FlutterDesktopRendererType::kEGL) {
-    renderer_ = std::make_unique<TizenRendererEcoreGL>(view_->tizen_view());
+    renderer_ = std::make_unique<TizenRendererEcoreGL>(
+        view_->tizen_view(), project_->HasArgument("--enable-impeller"));
   } else {
     renderer_ = std::make_unique<TizenRendererVulkan>(view_->tizen_view());
   }

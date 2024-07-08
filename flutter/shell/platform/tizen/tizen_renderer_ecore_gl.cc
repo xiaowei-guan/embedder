@@ -18,7 +18,9 @@
 
 namespace flutter {
 
-TizenRendererEcoreGL::TizenRendererEcoreGL(TizenViewBase* view) {
+TizenRendererEcoreGL::TizenRendererEcoreGL(TizenViewBase* view,
+                                           bool enable_impeller)
+    : enable_impeller_(enable_impeller) {
   TizenRenderer::CreateSurface(view);
 }
 
@@ -145,20 +147,6 @@ void TizenRendererEcoreGL::DestroySurface() {
 }
 
 bool TizenRendererEcoreGL::ChooseEGLConfiguration() {
-  EGLint config_attribs[] = {
-      // clang-format off
-      EGL_SURFACE_TYPE,    EGL_WINDOW_BIT,
-      EGL_RED_SIZE,        8,
-      EGL_GREEN_SIZE,      8,
-      EGL_BLUE_SIZE,       8,
-      EGL_ALPHA_SIZE,      EGL_DONT_CARE,
-      EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
-      EGL_SAMPLE_BUFFERS,  EGL_DONT_CARE,
-      EGL_SAMPLES,         EGL_DONT_CARE,
-      EGL_NONE
-      // clang-format on
-  };
-
   if (!eglInitialize(egl_display_, nullptr, nullptr)) {
     PrintEGLError();
     FT_LOG(Error) << "Could not initialize the EGL display.";
@@ -180,12 +168,50 @@ bool TizenRendererEcoreGL::ChooseEGLConfiguration() {
 
   EGLConfig* configs = (EGLConfig*)calloc(config_size, sizeof(EGLConfig));
   EGLint num_config;
-  if (!eglChooseConfig(egl_display_, config_attribs, configs, config_size,
-                       &num_config)) {
-    free(configs);
-    PrintEGLError();
-    FT_LOG(Error) << "No matching configurations found.";
-    return false;
+  if (enable_impeller_) {
+    EGLint impeller_config_attribs[] = {
+        // clang-format off
+        EGL_SURFACE_TYPE,    EGL_WINDOW_BIT,
+        EGL_RED_SIZE,        8,
+        EGL_GREEN_SIZE,      8,
+        EGL_BLUE_SIZE,       8,
+        EGL_ALPHA_SIZE,      8,
+        EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
+        EGL_SAMPLE_BUFFERS,  1,
+        EGL_SAMPLES,         4,
+        EGL_STENCIL_SIZE,    8,
+        EGL_DEPTH_SIZE,      0,
+        EGL_NONE
+        // clang-format on
+    };
+    if (!eglChooseConfig(egl_display_, impeller_config_attribs, configs,
+                         config_size, &num_config)) {
+      free(configs);
+      PrintEGLError();
+      FT_LOG(Error) << "No matching configurations found.";
+      return false;
+    }
+  } else {
+    EGLint config_attribs[] = {
+        // clang-format off
+        EGL_SURFACE_TYPE,    EGL_WINDOW_BIT,
+        EGL_RED_SIZE,        8,
+        EGL_GREEN_SIZE,      8,
+        EGL_BLUE_SIZE,       8,
+        EGL_ALPHA_SIZE,      EGL_DONT_CARE,
+        EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
+        EGL_SAMPLE_BUFFERS,  EGL_DONT_CARE,
+        EGL_SAMPLES,         EGL_DONT_CARE,
+        EGL_NONE
+        // clang-format on
+    };
+    if (!eglChooseConfig(egl_display_, config_attribs, configs, config_size,
+                         &num_config)) {
+      free(configs);
+      PrintEGLError();
+      FT_LOG(Error) << "No matching configurations found.";
+      return false;
+    }
   }
 
   int buffer_size = 32;
