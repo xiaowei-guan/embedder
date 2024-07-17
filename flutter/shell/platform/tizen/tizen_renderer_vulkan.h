@@ -40,8 +40,19 @@ class TizenRendererVulkan : public TizenRenderer {
                                const char* name);
   FlutterVulkanImage GetNextImage(const FlutterFrameInfo* frameInfo);
   bool Present(const FlutterVulkanImage* image);
+
  private:
   bool CreateInstance();
+  void Cleanup();
+  bool CheckValidationLayerSupport();
+  bool GetRequiredExtensions(std::vector<const char*>& extensions);
+  void PopulateDebugMessengerCreateInfo(
+      VkDebugUtilsMessengerCreateInfoEXT& createInfo);
+  void InitVulkan();
+  void SetupDebugMessenger();
+
+  bool enable_validation_layers_ = true;
+  VkDebugUtilsMessengerEXT debug_messenger_;
   VkInstance instance_;
   std::vector<const char*> instance_extensions_;
 };
