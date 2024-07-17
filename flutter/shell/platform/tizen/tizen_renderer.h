@@ -28,8 +28,8 @@ class TizenRenderer {
   virtual void ResizeSurface(int32_t width, int32_t height) = 0;
 
  protected:
+  bool CreateSurface(TizenViewBase* view);
   bool is_valid_ = false;
-  bool Create(TizenViewBase* view);
 };
 
 }  // namespace flutter

@@ -19,7 +19,7 @@
 namespace flutter {
 
 TizenRendererEcoreGL::TizenRendererEcoreGL(TizenViewBase* view) {
-  Create(view);
+  TizenRenderer::CreateSurface(view);
 }
 
 TizenRendererEcoreGL::~TizenRendererEcoreGL() {

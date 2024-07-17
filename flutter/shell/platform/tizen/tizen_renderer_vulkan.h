@@ -9,6 +9,8 @@
 #include "flutter/shell/platform/tizen/tizen_renderer.h"
 #include "flutter/shell/platform/tizen/tizen_view_base.h"
 
+#include <vulkan/vulkan.h>
+
 namespace flutter {
 
 class TizenRendererVulkan : public TizenRenderer {
@@ -24,6 +26,24 @@ class TizenRendererVulkan : public TizenRenderer {
   void DestroySurface() override;
 
   void ResizeSurface(int32_t width, int32_t height) override;
+  uint32_t GetVersion();
+  FlutterVulkanInstanceHandle GetInstanceHandle();
+  FlutterVulkanQueueHandle GetQueueHandle();
+  FlutterVulkanPhysicalDeviceHandle GetPhysicalDeviceHandle();
+  FlutterVulkanDeviceHandle GetDeviceHandle();
+  uint32_t GetQueueIndex();
+  size_t GetEnabledInstanceExtensionCount();
+  const char** GetEnabledInstanceExtensions();
+  size_t GetEnabledDeviceExtensionCount();
+  const char** GetEnabledDeviceExtensions();
+  void* GetInstanceProcAddress(FlutterVulkanInstanceHandle instance,
+                               const char* name);
+  FlutterVulkanImage GetNextImage(const FlutterFrameInfo* frameInfo);
+  bool Present(const FlutterVulkanImage* image);
+ private:
+  bool CreateInstance();
+  VkInstance instance_;
+  std::vector<const char*> instance_extensions_;
 };
 }  // namespace flutter
 
