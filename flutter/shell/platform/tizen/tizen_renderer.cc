@@ -7,7 +7,8 @@
 #include "flutter/shell/platform/tizen/tizen_window.h"
 
 namespace flutter {
-bool TizenRenderer::Create(TizenViewBase* view) {
+
+bool TizenRenderer::CreateSurface(TizenViewBase* view) {
   TizenGeometry geometry = view->GetGeometry();
   if (dynamic_cast<TizenWindow*>(view)) {
     auto* window = dynamic_cast<TizenWindow*>(view);
@@ -19,7 +20,6 @@ bool TizenRenderer::Create(TizenViewBase* view) {
     return CreateSurface(tizen_view->GetRenderTarget(), nullptr, geometry.width,
                          geometry.height);
   }
-  return false;
 }
 
 }  // namespace flutter

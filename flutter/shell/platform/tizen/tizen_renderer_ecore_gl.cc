@@ -21,7 +21,7 @@ namespace flutter {
 TizenRendererEcoreGL::TizenRendererEcoreGL(TizenViewBase* view,
                                            bool enable_impeller)
     : enable_impeller_(enable_impeller) {
-  Create(view);
+  TizenRenderer::CreateSurface(view);
 }
 
 TizenRendererEcoreGL::~TizenRendererEcoreGL() {

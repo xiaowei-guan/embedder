@@ -209,7 +209,9 @@ FlutterDesktopViewRef FlutterDesktopViewCreateFromNewWindow(
   } else {
     window = std::make_unique<flutter::TizenWindowEcoreWl2>(
         window_geometry, window_properties.transparent,
-        window_properties.focusable, window_properties.top_level);
+        window_properties.focusable, window_properties.top_level,
+        window_properties.renderer_type ==
+            FlutterDesktopRendererType::kEVulkan);
   }
 
   auto view = std::make_unique<flutter::FlutterTizenView>(

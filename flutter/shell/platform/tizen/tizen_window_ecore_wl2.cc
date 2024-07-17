@@ -52,8 +52,10 @@ FlutterPointerDeviceKind ToFlutterDeviceKind(const Ecore_Device* dev) {
 TizenWindowEcoreWl2::TizenWindowEcoreWl2(TizenGeometry geometry,
                                          bool transparent,
                                          bool focusable,
-                                         bool top_level)
-    : TizenWindow(geometry, transparent, focusable, top_level) {
+                                         bool top_level,
+                                         bool is_vulkan)
+    : TizenWindow(geometry, transparent, focusable, top_level),
+      is_vulkan_(is_vulkan) {
   if (!CreateWindow()) {
     FT_LOG(Error) << "Failed to create a platform window.";
     return;
@@ -103,9 +105,14 @@ bool TizenWindowEcoreWl2::CreateWindow() {
       ecore_wl2_display_, nullptr, initial_geometry_.left,
       initial_geometry_.top, initial_geometry_.width, initial_geometry_.height);
 
-  ecore_wl2_egl_window_ = ecore_wl2_egl_window_create(
-      ecore_wl2_window_, initial_geometry_.width, initial_geometry_.height);
-  return ecore_wl2_egl_window_ && wl2_display_;
+  if (is_vulkan_) {
+    wl2_surface_ = ecore_wl2_window_surface_get(ecore_wl2_window_);
+    return wl2_surface_ && wl2_display_;
+  } else {
+    ecore_wl2_egl_window_ = ecore_wl2_egl_window_create(
+        ecore_wl2_window_, initial_geometry_.width, initial_geometry_.height);
+    return ecore_wl2_egl_window_ && wl2_display_;
+  }
 }
 
 void TizenWindowEcoreWl2::SetWindowOptions() {
@@ -225,7 +232,8 @@ void TizenWindowEcoreWl2::RegisterEventHandlers() {
         if (self->view_delegate_) {
           auto* rotation_event =
               reinterpret_cast<Ecore_Wl2_Event_Window_Rotation*>(event);
-          if (rotation_event->win == self->GetWindowId()) {
+          if (rotation_event->win == self->GetWindowId() &&
+              self->ecore_wl2_egl_window_) {
             int32_t degree = rotation_event->angle;
             self->view_delegate_->OnRotate(degree);
             TizenGeometry geometry = self->GetGeometry();
@@ -438,6 +446,14 @@ bool TizenWindowEcoreWl2::SetGeometry(TizenGeometry geometry) {
   // API that flushes geometry settings to the compositor.
   ecore_wl2_window_position_set(ecore_wl2_window_, geometry.left, geometry.top);
   return true;
+}
+
+void* TizenWindowEcoreWl2::GetRenderTarget() {
+  if (is_vulkan_) {
+    return wl2_surface_;
+  } else {
+    return ecore_wl2_egl_window_;
+  }
 }
 
 TizenGeometry TizenWindowEcoreWl2::GetScreenGeometry() {
