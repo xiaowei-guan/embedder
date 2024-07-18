@@ -46,6 +46,7 @@ class TizenRendererVulkan : public TizenRenderer {
       VK_PRESENT_MODE_FIFO_KHR;
   bool CreateInstance();
   bool CreateLogicalDevice();
+  bool CreateCommandPool();
   void Cleanup();
   bool CheckValidationLayerSupport();
   bool GetRequiredExtensions(std::vector<const char*>& extensions);
@@ -65,6 +66,8 @@ class TizenRendererVulkan : public TizenRenderer {
   VkQueue graphics_queue_;
   VkSurfaceKHR surface_;
   VkSurfaceFormatKHR surface_format_;
+  VkSemaphore present_transition_semaphore_;
+  VkFence image_ready_fence_;
   VkSwapchainKHR swapchain_;
   VkCommandPool swapchain_command_pool_;
   std::vector<VkImage> swapchain_images_;

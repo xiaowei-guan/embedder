@@ -376,6 +376,29 @@ bool TizenRendererVulkan::CreateLogicalDevice() {
   return true;
 }
 
+bool TizenRendererVulkan::CreateCommandPool() {
+  // --------------------------------------------------------------------------
+  // Create sync primitives and command pool to use in the render loop
+  // callbacks.
+  // --------------------------------------------------------------------------
+
+  VkFenceCreateInfo f_info{};
+  f_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+  vkCreateFence(logical_device_, &f_info, nullptr, &image_ready_fence_);
+
+  VkSemaphoreCreateInfo s_info{};
+  s_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+  vkCreateSemaphore(logical_device_, &s_info, nullptr,
+                    &present_transition_semaphore_);
+
+  VkCommandPoolCreateInfo pool_info{};
+  pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+  pool_info.queueFamilyIndex = graphics_queue_family_index_;
+  vkCreateCommandPool(logical_device_, &pool_info, nullptr,
+                      &swapchain_command_pool_);
+  return false;
+}
+
 bool TizenRendererVulkan::InitializeSwapchain() {
   // --------------------------------------------------------------------------
   // Choose an image format that can be presented to the surface, preferring
