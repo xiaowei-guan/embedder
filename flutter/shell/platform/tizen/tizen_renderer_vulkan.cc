@@ -73,7 +73,7 @@ bool TizenRendererVulkan::CreateInstance() {
     return false;
   }
 
-  if (!GetRequiredExtensions(instance_extensions_)) {
+  if (!GetRequiredExtensions(enabled_instance_extensions_)) {
     FT_LOG(Error) << "Failed to get required extensions";
     return false;
   }
@@ -92,8 +92,8 @@ bool TizenRendererVulkan::CreateInstance() {
   create_info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
   create_info.pApplicationInfo = &app_info;
   create_info.enabledExtensionCount =
-      static_cast<uint32_t>(instance_extensions_.size());
-  create_info.ppEnabledExtensionNames = instance_extensions_.data();
+      static_cast<uint32_t>(enabled_instance_extensions_.size());
+  create_info.ppEnabledExtensionNames = enabled_instance_extensions_.data();
   create_info.flags = 0;
 
   VkDebugUtilsMessengerCreateInfoEXT debug_create_info{};
@@ -348,6 +348,31 @@ bool TizenRendererVulkan::CreateSurface(void* render_target,
     FT_LOG(Error) << "Failed to create surface.";
     return false;
   }
+  return true;
+}
+
+bool TizenRendererVulkan::CreateLogicalDevice() {
+  float priority = 1.0f;
+  VkDeviceQueueCreateInfo queue_info{};
+  queue_info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+  queue_info.queueFamilyIndex = graphics_queue_family_index_;
+  queue_info.queueCount = 1;
+  queue_info.pQueuePriorities = &priority;
+
+  VkPhysicalDeviceFeatures device_features{};
+  VkDeviceCreateInfo device_info{};
+  device_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+  device_info.queueCreateInfoCount = 1;
+  device_info.pQueueCreateInfos = &queue_info;
+  device_info.enabledExtensionCount =
+      static_cast<uint32_t>(enabled_device_extensions_.size());
+  device_info.ppEnabledExtensionNames = enabled_device_extensions_.data();
+  device_info.pEnabledFeatures = &device_features;
+
+  vkCreateDevice(physical_device_, &device_info, nullptr, &logical_device_);
+
+  vkGetDeviceQueue(logical_device_, graphics_queue_family_index_, 0,
+                   &graphics_queue_);
   return true;
 }
 
