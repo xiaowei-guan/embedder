@@ -42,11 +42,14 @@ class TizenRendererVulkan : public TizenRenderer {
   bool Present(const FlutterVulkanImage* image);
 
  private:
+  static constexpr VkPresentModeKHR kPreferredPresentMode =
+      VK_PRESENT_MODE_FIFO_KHR;
   bool CreateInstance();
   bool CreateLogicalDevice();
   void Cleanup();
   bool CheckValidationLayerSupport();
   bool GetRequiredExtensions(std::vector<const char*>& extensions);
+  bool InitializeSwapchain();
   void PopulateDebugMessengerCreateInfo(
       VkDebugUtilsMessengerCreateInfoEXT& createInfo);
   void InitVulkan();
@@ -61,9 +64,16 @@ class TizenRendererVulkan : public TizenRenderer {
   VkPhysicalDevice physical_device_;
   VkQueue graphics_queue_;
   VkSurfaceKHR surface_;
+  VkSurfaceFormatKHR surface_format_;
+  VkSwapchainKHR swapchain_;
+  VkCommandPool swapchain_command_pool_;
+  std::vector<VkImage> swapchain_images_;
+  std::vector<VkCommandBuffer> present_transition_buffers_;
   std::vector<const char*> enabled_device_extensions_;
   std::vector<const char*> enabled_instance_extensions_;
   uint32_t graphics_queue_family_index_;
+  uint32_t width_;
+  uint32_t height_;
 };
 }  // namespace flutter
 
