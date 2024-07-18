@@ -4,10 +4,19 @@
 // found in the LICENSE file.
 
 #include "flutter/shell/platform/tizen/tizen_renderer_vulkan.h"
+#include <Ecore_Wl2.h>
 #include <vulkan/vulkan_wayland.h>
+#include <optional>
 #include "flutter/shell/platform/tizen/logger.h"
 
 namespace flutter {
+
+inline static void VK_CHECK_RESULT(VkResult result) {
+  if (result != VK_SUCCESS) {
+    FT_LOG(Error) << "VkResult is " << result << " in " << __FILE__
+                  << " at line " << __LINE__;
+  }
+}
 
 const std::vector<const char*> validation_layers = {
     "VK_LAYER_KHRONOS_validation"};
@@ -211,12 +220,135 @@ void TizenRendererVulkan::PopulateDebugMessengerCreateInfo(
   createInfo.pfnUserCallback = DebugMessengerCallback;
 }
 
+bool TizenRendererVulkan::PickPhysicalDevice() {
+  uint32_t gpu_count;
+  VK_CHECK_RESULT(vkEnumeratePhysicalDevices(instance_, &gpu_count, nullptr));
+  if (gpu_count <= 0) {
+    FT_LOG(Error) << "No GPUs found";
+    return false;
+  }
+  std::vector<VkPhysicalDevice> physical_devices(gpu_count);
+  VK_CHECK_RESULT(vkEnumeratePhysicalDevices(instance_, &gpu_count,
+                                             physical_devices.data()));
+  uint32_t selected_score = 0;
+  for (const auto& physical_device : physical_devices) {
+    VkPhysicalDeviceProperties properties;
+    VkPhysicalDeviceFeatures features;
+    vkGetPhysicalDeviceProperties(physical_device, &properties);
+    vkGetPhysicalDeviceFeatures(physical_device, &features);
+    FT_LOG(Info) << "Device Name: " << properties.deviceName;
+    uint32_t score = 0;
+    std::vector<const char*> supported_extensions;
+    uint32_t qfp_count;
+    vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &qfp_count,
+                                             nullptr);
+    std::vector<VkQueueFamilyProperties> qfp(qfp_count);
+    vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &qfp_count,
+                                             qfp.data());
+    std::optional<uint32_t> graphics_queue_family;
+    for (uint32_t i = 0; i < qfp.size(); i++) {
+      // Only pick graphics queues that can also present to the surface.
+      // Graphics queues that can't present are rare if not nonexistent, but
+      // the spec allows for this, so check it anyhow.
+      VkBool32 surface_present_supported;
+      VK_CHECK_RESULT(vkGetPhysicalDeviceSurfaceSupportKHR(
+          physical_device, i, surface_, &surface_present_supported));
+
+      if (!graphics_queue_family.has_value() &&
+          qfp[i].queueFlags & VK_QUEUE_GRAPHICS_BIT &&
+          surface_present_supported) {
+        graphics_queue_family = i;
+      }
+      // Skip physical devices that don't have a graphics queue.
+      if (!graphics_queue_family.has_value()) {
+        FT_LOG(Info) << "Skipping due to no suitable graphics queues.";
+        continue;
+      }
+
+      // Prefer discrete GPUs.
+      if (properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
+        score += 1 << 30;
+      }
+      uint32_t extension_count;
+      VK_CHECK_RESULT(vkEnumerateDeviceExtensionProperties(
+          physical_device, nullptr, &extension_count, nullptr));
+      std::vector<VkExtensionProperties> available_extensions(extension_count);
+      VK_CHECK_RESULT(vkEnumerateDeviceExtensionProperties(
+          physical_device, nullptr, &extension_count,
+          available_extensions.data()));
+
+      bool supports_swapchain = false;
+      for (const auto& available_extension : available_extensions) {
+        if (strcmp(VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+                   available_extension.extensionName) == 0) {
+          supports_swapchain = true;
+          supported_extensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+        }
+        // The spec requires VK_KHR_portability_subset be enabled whenever it's
+        // available on a device. It's present on compatibility ICDs like
+        // MoltenVK.
+        else if (strcmp("VK_KHR_portability_subset",
+                        available_extension.extensionName) == 0) {
+          supported_extensions.push_back("VK_KHR_portability_subset");
+        }
+        // Prefer GPUs that support VK_KHR_get_memory_requirements2.
+        else if (strcmp(VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME,
+                        available_extension.extensionName) == 0) {
+          score += 1 << 29;
+          supported_extensions.push_back(
+              VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME);
+        }
+      }
+      // Skip physical devices that don't have swapchain support.
+      if (!supports_swapchain) {
+        FT_LOG(Info) << "Skipping due to lack of swapchain support.";
+        continue;
+      }
+      // Prefer GPUs with larger max texture sizes.
+      score += properties.limits.maxImageDimension2D;
+      if (selected_score < score) {
+        FT_LOG(Info) << "This is the best device so far. Score: " << score;
+
+        selected_score = score;
+        physical_device_ = physical_device;
+        enabled_device_extensions_ = supported_extensions;
+        graphics_queue_family_index_ = graphics_queue_family.value_or(
+            std::numeric_limits<uint32_t>::max());
+      }
+    }
+  }
+  return physical_device_ != VK_NULL_HANDLE;
+}
+
 TizenRendererVulkan::~TizenRendererVulkan() {}
 bool TizenRendererVulkan::CreateSurface(void* render_target,
                                         void* render_target_display,
                                         int32_t width,
                                         int32_t height) {
-  return false;
+  VkWaylandSurfaceCreateInfoKHR createInfo;
+  memset(&createInfo, 0, sizeof(createInfo));
+  createInfo.sType = VK_STRUCTURE_TYPE_WAYLAND_SURFACE_CREATE_INFO_KHR;
+  createInfo.pNext = NULL;
+  createInfo.flags = 0;
+  createInfo.display = static_cast<wl_display*>(render_target_display);
+  createInfo.surface = static_cast<wl_surface*>(render_target);
+
+  PFN_vkCreateWaylandSurfaceKHR vkCreateWaylandSurfaceKHR;
+  vkCreateWaylandSurfaceKHR =
+      (PFN_vkCreateWaylandSurfaceKHR)vkGetInstanceProcAddr(
+          instance_, "vkCreateWaylandSurfaceKHR");
+
+  if (!vkCreateWaylandSurfaceKHR) {
+    FT_LOG(Error) << "Wayland: Vulkan instance missing "
+                     "VK_KHR_wayland_surface extension";
+    return false;
+  }
+
+  if (!vkCreateWaylandSurfaceKHR(instance_, &createInfo, NULL, &surface_)) {
+    FT_LOG(Error) << "Failed to create surface.";
+    return false;
+  }
+  return true;
 }
 
 void TizenRendererVulkan::DestroySurface() {}
@@ -266,7 +398,8 @@ const char** TizenRendererVulkan::GetEnabledDeviceExtensions() {
 void* TizenRendererVulkan::GetInstanceProcAddress(
     FlutterVulkanInstanceHandle instance,
     const char* name) {
-  return nullptr;
+  return reinterpret_cast<void*>(
+      vkGetInstanceProcAddr(reinterpret_cast<VkInstance>(instance), name));
 }
 
 FlutterVulkanImage TizenRendererVulkan::GetNextImage(
