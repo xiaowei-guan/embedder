@@ -376,6 +376,183 @@ bool TizenRendererVulkan::CreateLogicalDevice() {
   return true;
 }
 
+bool TizenRendererVulkan::InitializeSwapchain() {
+  // --------------------------------------------------------------------------
+  // Choose an image format that can be presented to the surface, preferring
+  // the common BGRA+sRGB if available.
+  // --------------------------------------------------------------------------
+
+  uint32_t format_count;
+  vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device_, surface_,
+                                       &format_count, nullptr);
+  std::vector<VkSurfaceFormatKHR> formats(format_count);
+  vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device_, surface_,
+                                       &format_count, formats.data());
+
+  surface_format_ = formats[0];
+  for (const auto& format : formats) {
+    if (format.format == VK_FORMAT_B8G8R8A8_UNORM &&
+        format.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
+      surface_format_ = format;
+      break;
+    }
+  }
+  // --------------------------------------------------------------------------
+  // Choose the presentable image size that's as close as possible to the
+  // window size.
+  // --------------------------------------------------------------------------
+
+  VkExtent2D clientSize;
+
+  VkSurfaceCapabilitiesKHR surface_capabilities;
+  vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device_, surface_,
+                                            &surface_capabilities);
+
+  if (surface_capabilities.currentExtent.width != UINT32_MAX) {
+    // If the surface reports a specific extent, we must use it.
+    clientSize = surface_capabilities.currentExtent;
+  } else {
+    VkExtent2D actual_extent{};
+    actual_extent.width = width_;
+    actual_extent.height = height_;
+
+    clientSize.width =
+        std::max(surface_capabilities.minImageExtent.width,
+                 std::min(surface_capabilities.maxImageExtent.width,
+                          actual_extent.width));
+    clientSize.height =
+        std::max(surface_capabilities.minImageExtent.height,
+                 std::min(surface_capabilities.maxImageExtent.height,
+                          actual_extent.height));
+  }
+
+  // --------------------------------------------------------------------------
+  // Desired image count
+  // --------------------------------------------------------------------------
+
+  const uint32_t maxImageCount = surface_capabilities.maxImageCount;
+  const uint32_t minImageCount = surface_capabilities.minImageCount;
+  uint32_t desiredImageCount = minImageCount + 1;
+
+  // According to section 30.5 of VK 1.1, maxImageCount of zero means "that
+  // there is no limit on the number of images, though there may be limits
+  // related to the total amount of memory used by presentable images."
+  if (maxImageCount != 0 && desiredImageCount > maxImageCount) {
+    desiredImageCount = surface_capabilities.minImageCount;
+  }
+
+  // --------------------------------------------------------------------------
+  // Choose the present mode.
+  // --------------------------------------------------------------------------
+
+  uint32_t mode_count;
+  vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device_, surface_,
+                                            &mode_count, nullptr);
+  std::vector<VkPresentModeKHR> modes(mode_count);
+  vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device_, surface_,
+                                            &mode_count, modes.data());
+  // If the preferred mode isn't available, just choose the first one.
+  VkPresentModeKHR present_mode = modes[0];
+  for (const auto& mode : modes) {
+    if (mode == kPreferredPresentMode) {
+      present_mode = mode;
+      break;
+    }
+  }
+
+  // --------------------------------------------------------------------------
+  // Create the swapchain.
+  // --------------------------------------------------------------------------
+
+  const VkCompositeAlphaFlagBitsKHR compositeAlpha =
+      (surface_capabilities.supportedCompositeAlpha &
+       VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR)
+          ? VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR
+          : VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+
+  VkSwapchainCreateInfoKHR info{};
+  info.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+  info.surface = surface_;
+  info.minImageCount = desiredImageCount;
+  info.imageFormat = surface_format_.format;
+  info.imageColorSpace = surface_format_.colorSpace;
+  info.imageExtent = clientSize;
+  info.imageArrayLayers = 1;
+  info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+  info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+  info.preTransform = surface_capabilities.currentTransform;
+  info.compositeAlpha = compositeAlpha;
+  info.presentMode = present_mode;
+  info.clipped = VK_TRUE;
+
+  auto result =
+      vkCreateSwapchainKHR(logical_device_, &info, nullptr, &swapchain_);
+  // CHECK_VK_RESULT(result);
+  if (result != VK_SUCCESS) {
+    return false;
+  }
+
+  // --------------------------------------------------------------------------
+  // Fetch swapchain images
+  // --------------------------------------------------------------------------
+
+  uint32_t image_count;
+  vkGetSwapchainImagesKHR(logical_device_, swapchain_, &image_count, nullptr);
+  swapchain_images_.reserve(image_count);
+  swapchain_images_.resize(image_count);
+  vkGetSwapchainImagesKHR(logical_device_, swapchain_, &image_count,
+                          swapchain_images_.data());
+
+  // --------------------------------------------------------------------------
+  // Record a command buffer for each of the images to be executed prior to
+  // presenting.
+  // --------------------------------------------------------------------------
+
+  present_transition_buffers_.resize(swapchain_images_.size());
+
+  VkCommandBufferAllocateInfo buffers_info{};
+  buffers_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+  buffers_info.commandPool = swapchain_command_pool_;
+  buffers_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+  buffers_info.commandBufferCount =
+      static_cast<uint32_t>(present_transition_buffers_.size());
+
+  vkAllocateCommandBuffers(logical_device_, &buffers_info,
+                           present_transition_buffers_.data());
+  for (size_t i = 0; i < swapchain_images_.size(); i++) {
+    auto image = swapchain_images_[i];
+    auto buffer = present_transition_buffers_[i];
+
+    VkCommandBufferBeginInfo begin_info{};
+    begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    vkBeginCommandBuffer(buffer, &begin_info);
+
+    // Filament Engine hands back the image after writing to it
+    VkImageMemoryBarrier barrier{};
+    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    barrier.srcAccessMask = 0;
+    barrier.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
+    barrier.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.image = image;
+    barrier.subresourceRange = {
+        .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+        .baseMipLevel = 0,
+        .levelCount = 1,
+        .baseArrayLayer = 0,
+        .layerCount = 1,
+    };
+    vkCmdPipelineBarrier(buffer, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                         VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0,
+                         nullptr, 1, &barrier);
+
+    vkEndCommandBuffer(buffer);
+  }
+  return true;
+}
+
 void TizenRendererVulkan::DestroySurface() {}
 
 void TizenRendererVulkan::ResizeSurface(int32_t width, int32_t height) {}
