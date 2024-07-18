@@ -43,6 +43,7 @@ class TizenRendererVulkan : public TizenRenderer {
 
  private:
   bool CreateInstance();
+  bool CreateLogicalDevice();
   void Cleanup();
   bool CheckValidationLayerSupport();
   bool GetRequiredExtensions(std::vector<const char*>& extensions);
@@ -55,11 +56,13 @@ class TizenRendererVulkan : public TizenRenderer {
   bool enable_validation_layers_ = true;
 
   VkDebugUtilsMessengerEXT debug_messenger_;
+  VkDevice logical_device_;
   VkInstance instance_;
   VkPhysicalDevice physical_device_;
+  VkQueue graphics_queue_;
   VkSurfaceKHR surface_;
   std::vector<const char*> enabled_device_extensions_;
-  std::vector<const char*> instance_extensions_;
+  std::vector<const char*> enabled_instance_extensions_;
   uint32_t graphics_queue_family_index_;
 };
 }  // namespace flutter
