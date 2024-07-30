@@ -10,6 +10,9 @@
 #include "flutter/shell/platform/tizen/tizen_view_base.h"
 
 #include <vulkan/vulkan.h>
+#include <algorithm>
+#include <limits>
+#include <vector>
 
 namespace flutter {
 
@@ -42,18 +45,16 @@ class TizenRendererVulkan : public TizenRenderer {
   bool Present(const FlutterVulkanImage* image);
 
  private:
-  static constexpr VkPresentModeKHR kPreferredPresentMode =
-      VK_PRESENT_MODE_FIFO_KHR;
   bool CreateInstance();
   bool CreateLogicalDevice();
   bool CreateCommandPool();
   void Cleanup();
   bool CheckValidationLayerSupport();
   bool GetRequiredExtensions(std::vector<const char*>& extensions);
+  bool InitVulkan(TizenViewBase* view);
   bool InitializeSwapchain();
   void PopulateDebugMessengerCreateInfo(
       VkDebugUtilsMessengerCreateInfoEXT& createInfo);
-  void InitVulkan();
   bool PickPhysicalDevice();
   void SetupDebugMessenger();
 
@@ -75,6 +76,7 @@ class TizenRendererVulkan : public TizenRenderer {
   std::vector<const char*> enabled_device_extensions_;
   std::vector<const char*> enabled_instance_extensions_;
   uint32_t graphics_queue_family_index_;
+  uint32_t last_image_index_;
   uint32_t width_;
   uint32_t height_;
 };

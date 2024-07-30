@@ -5,6 +5,7 @@
 
 #include "flutter/shell/platform/tizen/tizen_renderer_vulkan.h"
 #include <Ecore_Wl2.h>
+#include <stddef.h>
 #include <vulkan/vulkan_wayland.h>
 #include <optional>
 #include "flutter/shell/platform/tizen/logger.h"
@@ -46,21 +47,63 @@ void DestroyDebugUtilsMessengerEXT(VkInstance instance,
 }
 
 TizenRendererVulkan::TizenRendererVulkan(TizenViewBase* view) {
-  InitVulkan();
-  TizenRenderer::CreateSurface(view);
+  InitVulkan(view);
 }
 
-void TizenRendererVulkan::InitVulkan() {
+bool TizenRendererVulkan::InitVulkan(TizenViewBase* view) {
   if (!CreateInstance()) {
     FT_LOG(Error) << "Failed to create Vulkan instance";
-    return;
+    return false;
   }
   if (enable_validation_layers_) {
     SetupDebugMessenger();
   }
+
+  if (!TizenRenderer::CreateSurface(view)) {
+    FT_LOG(Error) << "Failed to create surface";
+    return false;
+  }
+
+  if (!PickPhysicalDevice()) {
+    FT_LOG(Error) << "Filed to pick physical device";
+    return false;
+  }
+
+  if (!CreateLogicalDevice()) {
+    FT_LOG(Error) << "Filed to create logical device";
+    return false;
+  }
+
+  if (!CreateCommandPool()) {
+    FT_LOG(Error) << "Filed to create command pool";
+    return false;
+  }
+
+  if (!InitializeSwapchain()) {
+    FT_LOG(Error) << "Filed to initialize swapchain";
+    return false;
+  }
+  return true;
 }
 
 void TizenRendererVulkan::Cleanup() {
+  if (logical_device_) {
+    if (image_ready_fence_) {
+      vkDestroyFence(logical_device_, image_ready_fence_, nullptr);
+    }
+    if (present_transition_semaphore_) {
+      vkDestroySemaphore(logical_device_, present_transition_semaphore_,
+                         nullptr);
+    }
+    if (swapchain_command_pool_) {
+      vkDestroyCommandPool(logical_device_, swapchain_command_pool_, nullptr);
+    }
+
+    vkDestroyDevice(logical_device_, nullptr);
+  }
+  if (surface_) {
+    vkDestroySurfaceKHR(instance_, surface_, nullptr);
+  }
   if (enable_validation_layers_) {
     DestroyDebugUtilsMessengerEXT(instance_, debug_messenger_, nullptr);
   }
@@ -103,7 +146,8 @@ bool TizenRendererVulkan::CreateInstance() {
         static_cast<uint32_t>(validation_layers.size());
     create_info.ppEnabledLayerNames = validation_layers.data();
     PopulateDebugMessengerCreateInfo(debug_create_info);
-    create_info.pNext = (VkDebugUtilsMessengerCreateInfoEXT*)&debug_create_info;
+    create_info.pNext = reinterpret_cast<VkDebugUtilsMessengerCreateInfoEXT*>(
+        &debug_create_info);
   } else {
     create_info.enabledLayerCount = 0;
     create_info.pNext = nullptr;
@@ -121,8 +165,8 @@ bool TizenRendererVulkan::GetRequiredExtensions(
   uint32_t instance_extension_count = 0;
   bool has_surface_extension = false;
 
-  if (vkEnumerateInstanceExtensionProperties(NULL, &instance_extension_count,
-                                             NULL)) {
+  if (vkEnumerateInstanceExtensionProperties(nullptr, &instance_extension_count,
+                                             nullptr)) {
     FT_LOG(Error) << "Failed to enumerate instance extension count";
     return false;
   }
@@ -131,7 +175,7 @@ bool TizenRendererVulkan::GetRequiredExtensions(
         instance_extension_count);
 
     if (vkEnumerateInstanceExtensionProperties(
-            NULL, &instance_extension_count,
+            nullptr, &instance_extension_count,
             instance_extension_properties.data())) {
       FT_LOG(Error) << "Failed to enumerate instance extension properties";
       return false;
@@ -328,7 +372,7 @@ bool TizenRendererVulkan::CreateSurface(void* render_target,
   VkWaylandSurfaceCreateInfoKHR createInfo;
   memset(&createInfo, 0, sizeof(createInfo));
   createInfo.sType = VK_STRUCTURE_TYPE_WAYLAND_SURFACE_CREATE_INFO_KHR;
-  createInfo.pNext = NULL;
+  createInfo.pNext = nullptr;
   createInfo.flags = 0;
   createInfo.display = static_cast<wl_display*>(render_target_display);
   createInfo.surface = static_cast<wl_surface*>(render_target);
@@ -344,7 +388,7 @@ bool TizenRendererVulkan::CreateSurface(void* render_target,
     return false;
   }
 
-  if (!vkCreateWaylandSurfaceKHR(instance_, &createInfo, NULL, &surface_)) {
+  if (!vkCreateWaylandSurfaceKHR(instance_, &createInfo, nullptr, &surface_)) {
     FT_LOG(Error) << "Failed to create surface.";
     return false;
   }
@@ -477,7 +521,7 @@ bool TizenRendererVulkan::InitializeSwapchain() {
   // If the preferred mode isn't available, just choose the first one.
   VkPresentModeKHR present_mode = modes[0];
   for (const auto& mode : modes) {
-    if (mode == kPreferredPresentMode) {
+    if (mode == VK_PRESENT_MODE_FIFO_KHR) {
       present_mode = mode;
       break;
     }
@@ -580,44 +624,44 @@ void TizenRendererVulkan::DestroySurface() {}
 
 void TizenRendererVulkan::ResizeSurface(int32_t width, int32_t height) {}
 uint32_t TizenRendererVulkan::GetVersion() {
-  return 0;
+  return VK_MAKE_VERSION(1, 0, 0);
 }
 
 FlutterVulkanInstanceHandle TizenRendererVulkan::GetInstanceHandle() {
-  return nullptr;
+  return instance_;
 }
 
 FlutterVulkanQueueHandle TizenRendererVulkan::GetQueueHandle() {
-  return nullptr;
+  return graphics_queue_;
 }
 
 FlutterVulkanPhysicalDeviceHandle
 TizenRendererVulkan::GetPhysicalDeviceHandle() {
-  return nullptr;
+  return physical_device_;
 }
 
 FlutterVulkanDeviceHandle TizenRendererVulkan::GetDeviceHandle() {
-  return nullptr;
+  return logical_device_;
 }
 
 uint32_t TizenRendererVulkan::GetQueueIndex() {
-  return 0;
+  return graphics_queue_family_index_;
 }
 
 size_t TizenRendererVulkan::GetEnabledInstanceExtensionCount() {
-  return 0;
+  return enabled_instance_extensions_.size();
 }
 
 const char** TizenRendererVulkan::GetEnabledInstanceExtensions() {
-  return nullptr;
+  return enabled_instance_extensions_.data();
 }
 
 size_t TizenRendererVulkan::GetEnabledDeviceExtensionCount() {
-  return 0;
+  return enabled_device_extensions_.size();
 }
 
 const char** TizenRendererVulkan::GetEnabledDeviceExtensions() {
-  return nullptr;
+  return enabled_device_extensions_.data();
 }
 
 void* TizenRendererVulkan::GetInstanceProcAddress(
@@ -629,11 +673,41 @@ void* TizenRendererVulkan::GetInstanceProcAddress(
 
 FlutterVulkanImage TizenRendererVulkan::GetNextImage(
     const FlutterFrameInfo* frameInfo) {
-  return FlutterVulkanImage();
+  vkAcquireNextImageKHR(logical_device_, swapchain_, UINT64_MAX, VK_NULL_HANDLE,
+                        image_ready_fence_, &last_image_index_);
+  vkWaitForFences(logical_device_, 1, &image_ready_fence_, true, UINT64_MAX);
+  vkResetFences(logical_device_, 1, &image_ready_fence_);
+  return {
+      .struct_size = sizeof(FlutterVulkanImage),
+      .image = reinterpret_cast<uint64_t>(swapchain_images_[last_image_index_]),
+      .format = surface_format_.format,
+  };
 }
 
 bool TizenRendererVulkan::Present(const FlutterVulkanImage* image) {
-  return false;
+  VkPipelineStageFlags stage_flags =
+      VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+  VkSubmitInfo submit_info{};
+  submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+  submit_info.pWaitDstStageMask = &stage_flags;
+  submit_info.commandBufferCount = 1;
+  submit_info.pCommandBuffers = &present_transition_buffers_[last_image_index_];
+  submit_info.signalSemaphoreCount = 1;
+  submit_info.pSignalSemaphores = &present_transition_semaphore_;
+  vkQueueSubmit(graphics_queue_, 1, &submit_info, image_ready_fence_);
+  VkPresentInfoKHR present_info{};
+  present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+  present_info.waitSemaphoreCount = 1;
+  present_info.pWaitSemaphores = &present_transition_semaphore_;
+  present_info.swapchainCount = 1;
+  present_info.pSwapchains = &swapchain_;
+  present_info.pImageIndices = &last_image_index_;
+  VkResult result = vkQueuePresentKHR(graphics_queue_, &present_info);
+  if (result == VK_SUBOPTIMAL_KHR || result == VK_ERROR_OUT_OF_DATE_KHR) {
+    InitializeSwapchain();
+  }
+  vkQueueWaitIdle(graphics_queue_);
+  return result == VK_SUCCESS;
 }
 
 }  // namespace flutter
