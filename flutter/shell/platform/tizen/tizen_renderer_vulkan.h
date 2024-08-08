@@ -48,9 +48,21 @@ class TizenRendererVulkan : public TizenRenderer {
   bool CreateInstance();
   bool CreateLogicalDevice();
   bool CreateCommandPool();
+  bool CreateSemaphore();
+  bool CreateFence();
   void Cleanup();
   bool CheckValidationLayerSupport();
+  bool GetDeviceQueue();
   bool GetRequiredExtensions(std::vector<const char*>& extensions);
+  VkSurfaceFormatKHR GetSwapChainFormat(
+      std::vector<VkSurfaceFormatKHR>& surface_formats);
+  VkExtent2D GetSwapChainExtent(VkSurfaceCapabilitiesKHR& surface_capabilities);
+  uint32_t GetSwapChainNumImages(
+      VkSurfaceCapabilitiesKHR& surface_capabilities);
+  VkPresentModeKHR GetSwapChainPresentMode(
+      std::vector<VkPresentModeKHR>& present_modes);
+  VkCompositeAlphaFlagBitsKHR GetSwapChainCompositeAlpha(
+      VkSurfaceCapabilitiesKHR& surface_capabilities);
   bool InitVulkan(TizenViewBase* view);
   bool InitializeSwapchain();
   void PopulateDebugMessengerCreateInfo(
@@ -77,6 +89,7 @@ class TizenRendererVulkan : public TizenRenderer {
   std::vector<const char*> enabled_instance_extensions_;
   uint32_t graphics_queue_family_index_;
   uint32_t last_image_index_;
+  bool resize_pending_ = false;
   uint32_t width_;
   uint32_t height_;
 };
