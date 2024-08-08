@@ -5,19 +5,13 @@
 
 #include "flutter/shell/platform/tizen/tizen_renderer_vulkan.h"
 #include <Ecore_Wl2.h>
+#include <glob.h>
 #include <stddef.h>
 #include <vulkan/vulkan_wayland.h>
 #include <optional>
 #include "flutter/shell/platform/tizen/logger.h"
 
 namespace flutter {
-
-inline static void VK_CHECK_RESULT(VkResult result) {
-  if (result != VK_SUCCESS) {
-    FT_LOG(Error) << "VkResult is " << result << " in " << __FILE__
-                  << " at line " << __LINE__;
-  }
-}
 
 const std::vector<const char*> validation_layers = {
     "VK_LAYER_KHRONOS_validation"};
@@ -74,6 +68,21 @@ bool TizenRendererVulkan::InitVulkan(TizenViewBase* view) {
     return false;
   }
 
+  if (!GetDeviceQueue()) {
+    FT_LOG(Error) << "Filed to get device queue";
+    return false;
+  }
+
+  if (!CreateSemaphore()) {
+    FT_LOG(Error) << "Filed to create semaphore";
+    return false;
+  }
+
+  if (!CreateFence()) {
+    FT_LOG(Error) << "Filed to create fence";
+    return false;
+  }
+
   if (!CreateCommandPool()) {
     FT_LOG(Error) << "Filed to create command pool";
     return false;
@@ -83,6 +92,7 @@ bool TizenRendererVulkan::InitVulkan(TizenViewBase* view) {
     FT_LOG(Error) << "Filed to initialize swapchain";
     return false;
   }
+  is_valid_ = true;
   return true;
 }
 
@@ -98,7 +108,6 @@ void TizenRendererVulkan::Cleanup() {
     if (swapchain_command_pool_) {
       vkDestroyCommandPool(logical_device_, swapchain_command_pool_, nullptr);
     }
-
     vkDestroyDevice(logical_device_, nullptr);
   }
   if (surface_) {
@@ -107,11 +116,13 @@ void TizenRendererVulkan::Cleanup() {
   if (enable_validation_layers_) {
     DestroyDebugUtilsMessengerEXT(instance_, debug_messenger_, nullptr);
   }
-  vkDestroyInstance(instance_, nullptr);
+  if (instance_ != VK_NULL_HANDLE) {
+    vkDestroyInstance(instance_, nullptr);
+  }
 }
 
 bool TizenRendererVulkan::CreateInstance() {
-  if (enable_validation_layers_ && CheckValidationLayerSupport()) {
+  if (enable_validation_layers_ && !CheckValidationLayerSupport()) {
     FT_LOG(Error) << "Validation layers requested, but not available";
     return false;
   }
@@ -166,7 +177,7 @@ bool TizenRendererVulkan::GetRequiredExtensions(
   bool has_surface_extension = false;
 
   if (vkEnumerateInstanceExtensionProperties(nullptr, &instance_extension_count,
-                                             nullptr)) {
+                                             nullptr) != VK_SUCCESS) {
     FT_LOG(Error) << "Failed to enumerate instance extension count";
     return false;
   }
@@ -176,7 +187,7 @@ bool TizenRendererVulkan::GetRequiredExtensions(
 
     if (vkEnumerateInstanceExtensionProperties(
             nullptr, &instance_extension_count,
-            instance_extension_properties.data())) {
+            instance_extension_properties.data()) != VK_SUCCESS) {
       FT_LOG(Error) << "Failed to enumerate instance extension properties";
       return false;
     }
@@ -218,12 +229,12 @@ void TizenRendererVulkan::SetupDebugMessenger() {
 
 bool TizenRendererVulkan::CheckValidationLayerSupport() {
   uint32_t layer_count;
-  if (vkEnumerateInstanceLayerProperties(&layer_count, nullptr)) {
+  if (vkEnumerateInstanceLayerProperties(&layer_count, nullptr) != VK_SUCCESS) {
     return false;
   }
   std::vector<VkLayerProperties> available_layers(layer_count);
-  if (vkEnumerateInstanceLayerProperties(&layer_count,
-                                         available_layers.data())) {
+  if (vkEnumerateInstanceLayerProperties(
+          &layer_count, available_layers.data()) != VK_SUCCESS) {
     return false;
   }
 
@@ -265,22 +276,28 @@ void TizenRendererVulkan::PopulateDebugMessengerCreateInfo(
 }
 
 bool TizenRendererVulkan::PickPhysicalDevice() {
-  uint32_t gpu_count;
-  VK_CHECK_RESULT(vkEnumeratePhysicalDevices(instance_, &gpu_count, nullptr));
-  if (gpu_count <= 0) {
-    FT_LOG(Error) << "No GPUs found";
+  uint32_t gpu_count = 0;
+  if (vkEnumeratePhysicalDevices(instance_, &gpu_count, nullptr) !=
+          VK_SUCCESS ||
+      gpu_count == 0) {
+    FT_LOG(Error) << "Error occurred during physical devices enumeration.";
     return false;
   }
+
   std::vector<VkPhysicalDevice> physical_devices(gpu_count);
-  VK_CHECK_RESULT(vkEnumeratePhysicalDevices(instance_, &gpu_count,
-                                             physical_devices.data()));
+  if (vkEnumeratePhysicalDevices(instance_, &gpu_count,
+                                 physical_devices.data()) != VK_SUCCESS) {
+    FT_LOG(Error) << "Error occurred during physical devices enumeration.";
+    return false;
+  }
+
   uint32_t selected_score = 0;
   for (const auto& physical_device : physical_devices) {
     VkPhysicalDeviceProperties properties;
     VkPhysicalDeviceFeatures features;
     vkGetPhysicalDeviceProperties(physical_device, &properties);
     vkGetPhysicalDeviceFeatures(physical_device, &features);
-    FT_LOG(Info) << "Device Name: " << properties.deviceName;
+    FT_LOG(Info) << "Checking device : " << properties.deviceName;
     uint32_t score = 0;
     std::vector<const char*> supported_extensions;
     uint32_t qfp_count;
@@ -295,8 +312,8 @@ bool TizenRendererVulkan::PickPhysicalDevice() {
       // Graphics queues that can't present are rare if not nonexistent, but
       // the spec allows for this, so check it anyhow.
       VkBool32 surface_present_supported;
-      VK_CHECK_RESULT(vkGetPhysicalDeviceSurfaceSupportKHR(
-          physical_device, i, surface_, &surface_present_supported));
+      vkGetPhysicalDeviceSurfaceSupportKHR(physical_device, i, surface_,
+                                           &surface_present_supported);
 
       if (!graphics_queue_family.has_value() &&
           qfp[i].queueFlags & VK_QUEUE_GRAPHICS_BIT &&
@@ -314,12 +331,12 @@ bool TizenRendererVulkan::PickPhysicalDevice() {
         score += 1 << 30;
       }
       uint32_t extension_count;
-      VK_CHECK_RESULT(vkEnumerateDeviceExtensionProperties(
-          physical_device, nullptr, &extension_count, nullptr));
+      vkEnumerateDeviceExtensionProperties(physical_device, nullptr,
+                                           &extension_count, nullptr);
       std::vector<VkExtensionProperties> available_extensions(extension_count);
-      VK_CHECK_RESULT(vkEnumerateDeviceExtensionProperties(
-          physical_device, nullptr, &extension_count,
-          available_extensions.data()));
+      vkEnumerateDeviceExtensionProperties(physical_device, nullptr,
+                                           &extension_count,
+                                           available_extensions.data());
 
       bool supports_swapchain = false;
       for (const auto& available_extension : available_extensions) {
@@ -364,11 +381,15 @@ bool TizenRendererVulkan::PickPhysicalDevice() {
   return physical_device_ != VK_NULL_HANDLE;
 }
 
-TizenRendererVulkan::~TizenRendererVulkan() {}
+TizenRendererVulkan::~TizenRendererVulkan() {
+  Cleanup();
+}
 bool TizenRendererVulkan::CreateSurface(void* render_target,
                                         void* render_target_display,
                                         int32_t width,
                                         int32_t height) {
+  width_ = width;
+  height_ = height;
   VkWaylandSurfaceCreateInfoKHR createInfo;
   memset(&createInfo, 0, sizeof(createInfo));
   createInfo.sType = VK_STRUCTURE_TYPE_WAYLAND_SURFACE_CREATE_INFO_KHR;
@@ -388,7 +409,8 @@ bool TizenRendererVulkan::CreateSurface(void* render_target,
     return false;
   }
 
-  if (!vkCreateWaylandSurfaceKHR(instance_, &createInfo, nullptr, &surface_)) {
+  if (vkCreateWaylandSurfaceKHR(instance_, &createInfo, nullptr, &surface_) !=
+      VK_SUCCESS) {
     FT_LOG(Error) << "Failed to create surface.";
     return false;
   }
@@ -396,11 +418,11 @@ bool TizenRendererVulkan::CreateSurface(void* render_target,
 }
 
 bool TizenRendererVulkan::CreateLogicalDevice() {
-  float priority = 1.0f;
   VkDeviceQueueCreateInfo queue_info{};
   queue_info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
   queue_info.queueFamilyIndex = graphics_queue_family_index_;
   queue_info.queueCount = 1;
+  float priority = 1.0f;
   queue_info.pQueuePriorities = &priority;
 
   VkPhysicalDeviceFeatures device_features{};
@@ -413,90 +435,102 @@ bool TizenRendererVulkan::CreateLogicalDevice() {
   device_info.ppEnabledExtensionNames = enabled_device_extensions_.data();
   device_info.pEnabledFeatures = &device_features;
 
-  vkCreateDevice(physical_device_, &device_info, nullptr, &logical_device_);
-
-  vkGetDeviceQueue(logical_device_, graphics_queue_family_index_, 0,
-                   &graphics_queue_);
+  if (vkCreateDevice(physical_device_, &device_info, nullptr,
+                     &logical_device_) != VK_SUCCESS) {
+    FT_LOG(Error) << "Failed to create device.";
+    return false;
+  }
   return true;
 }
 
-bool TizenRendererVulkan::CreateCommandPool() {
-  // --------------------------------------------------------------------------
-  // Create sync primitives and command pool to use in the render loop
-  // callbacks.
-  // --------------------------------------------------------------------------
-
-  VkFenceCreateInfo f_info{};
-  f_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-  vkCreateFence(logical_device_, &f_info, nullptr, &image_ready_fence_);
-
-  VkSemaphoreCreateInfo s_info{};
-  s_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-  vkCreateSemaphore(logical_device_, &s_info, nullptr,
-                    &present_transition_semaphore_);
-
-  VkCommandPoolCreateInfo pool_info{};
-  pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-  pool_info.queueFamilyIndex = graphics_queue_family_index_;
-  vkCreateCommandPool(logical_device_, &pool_info, nullptr,
-                      &swapchain_command_pool_);
-  return false;
+bool TizenRendererVulkan::GetDeviceQueue() {
+  vkGetDeviceQueue(logical_device_, graphics_queue_family_index_, 0,
+                   &graphics_queue_);
+  return graphics_queue_ != VK_NULL_HANDLE;
 }
 
-bool TizenRendererVulkan::InitializeSwapchain() {
-  // --------------------------------------------------------------------------
-  // Choose an image format that can be presented to the surface, preferring
-  // the common BGRA+sRGB if available.
-  // --------------------------------------------------------------------------
+bool TizenRendererVulkan::CreateCommandPool() {
+  VkCommandPoolCreateInfo pool_info;
+  pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+  pool_info.pNext = nullptr;
+  pool_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT |
+                    VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
+  pool_info.queueFamilyIndex = graphics_queue_family_index_;
+  if (vkCreateCommandPool(logical_device_, &pool_info, nullptr,
+                          &swapchain_command_pool_) != VK_SUCCESS) {
+    FT_LOG(Error) << "Failed to create command pool.";
+    return false;
+  }
+  return true;
+}
 
-  uint32_t format_count;
-  vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device_, surface_,
-                                       &format_count, nullptr);
-  std::vector<VkSurfaceFormatKHR> formats(format_count);
-  vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device_, surface_,
-                                       &format_count, formats.data());
+bool TizenRendererVulkan::CreateSemaphore() {
+  VkSemaphoreCreateInfo s_info{};
+  s_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+  if (vkCreateSemaphore(logical_device_, &s_info, nullptr,
+                        &present_transition_semaphore_) != VK_SUCCESS) {
+    FT_LOG(Error) << "Failed to create semaphore.";
+    return false;
+  }
+  return true;
+}
 
-  surface_format_ = formats[0];
-  for (const auto& format : formats) {
-    if (format.format == VK_FORMAT_B8G8R8A8_UNORM &&
-        format.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
-      surface_format_ = format;
-      break;
+bool TizenRendererVulkan::CreateFence() {
+  VkFenceCreateInfo f_info{};
+  f_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+  if (vkCreateFence(logical_device_, &f_info, nullptr, &image_ready_fence_) !=
+      VK_SUCCESS) {
+    FT_LOG(Error) << "Failed to create fence.";
+    return false;
+  }
+  return true;
+}
+
+VkSurfaceFormatKHR TizenRendererVulkan::GetSwapChainFormat(
+    std::vector<VkSurfaceFormatKHR>& surface_formats) {
+  // If the list contains only one entry with undefined format
+  // it means that there are no preferred surface formats and any can be chosen
+  if ((surface_formats.size() == 1) &&
+      (surface_formats[0].format == VK_FORMAT_UNDEFINED)) {
+    return {VK_FORMAT_R8G8B8A8_UNORM, VK_COLORSPACE_SRGB_NONLINEAR_KHR};
+  }
+
+  // Check if list contains most widely used R8 G8 B8 A8 format
+  // with nonlinear color space
+  for (VkSurfaceFormatKHR& surface_format : surface_formats) {
+    if (surface_format.format == VK_FORMAT_R8G8B8A8_UNORM) {
+      return surface_format;
     }
   }
-  // --------------------------------------------------------------------------
-  // Choose the presentable image size that's as close as possible to the
-  // window size.
-  // --------------------------------------------------------------------------
 
-  VkExtent2D clientSize;
+  // Return the first format from the list
+  return surface_formats[0];
+}
 
-  VkSurfaceCapabilitiesKHR surface_capabilities;
-  vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device_, surface_,
-                                            &surface_capabilities);
-
+VkExtent2D TizenRendererVulkan::GetSwapChainExtent(
+    VkSurfaceCapabilitiesKHR& surface_capabilities) {
   if (surface_capabilities.currentExtent.width != UINT32_MAX) {
     // If the surface reports a specific extent, we must use it.
-    clientSize = surface_capabilities.currentExtent;
+    return surface_capabilities.currentExtent;
   } else {
-    VkExtent2D actual_extent{};
-    actual_extent.width = width_;
-    actual_extent.height = height_;
+    VkExtent2D swap_chain_extent{};
+    swap_chain_extent.width = width_;
+    swap_chain_extent.height = height_;
 
-    clientSize.width =
+    swap_chain_extent.width =
         std::max(surface_capabilities.minImageExtent.width,
                  std::min(surface_capabilities.maxImageExtent.width,
-                          actual_extent.width));
-    clientSize.height =
+                          swap_chain_extent.width));
+    swap_chain_extent.height =
         std::max(surface_capabilities.minImageExtent.height,
                  std::min(surface_capabilities.maxImageExtent.height,
-                          actual_extent.height));
+                          swap_chain_extent.height));
+    return swap_chain_extent;
   }
+}
 
-  // --------------------------------------------------------------------------
-  // Desired image count
-  // --------------------------------------------------------------------------
-
+uint32_t TizenRendererVulkan::GetSwapChainNumImages(
+    VkSurfaceCapabilitiesKHR& surface_capabilities) {
   const uint32_t maxImageCount = surface_capabilities.maxImageCount;
   const uint32_t minImageCount = surface_capabilities.minImageCount;
   uint32_t desiredImageCount = minImageCount + 1;
@@ -507,35 +541,83 @@ bool TizenRendererVulkan::InitializeSwapchain() {
   if (maxImageCount != 0 && desiredImageCount > maxImageCount) {
     desiredImageCount = surface_capabilities.minImageCount;
   }
+  return desiredImageCount;
+}
 
-  // --------------------------------------------------------------------------
-  // Choose the present mode.
-  // --------------------------------------------------------------------------
-
-  uint32_t mode_count;
-  vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device_, surface_,
-                                            &mode_count, nullptr);
-  std::vector<VkPresentModeKHR> modes(mode_count);
-  vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device_, surface_,
-                                            &mode_count, modes.data());
-  // If the preferred mode isn't available, just choose the first one.
-  VkPresentModeKHR present_mode = modes[0];
-  for (const auto& mode : modes) {
+VkPresentModeKHR TizenRendererVulkan::GetSwapChainPresentMode(
+    std::vector<VkPresentModeKHR>& present_modes) {
+  VkPresentModeKHR present_mode = present_modes[0];
+  for (const auto& mode : present_modes) {
     if (mode == VK_PRESENT_MODE_FIFO_KHR) {
       present_mode = mode;
       break;
     }
   }
+  return present_mode;
+}
 
-  // --------------------------------------------------------------------------
-  // Create the swapchain.
-  // --------------------------------------------------------------------------
+VkCompositeAlphaFlagBitsKHR TizenRendererVulkan::GetSwapChainCompositeAlpha(
+    VkSurfaceCapabilitiesKHR& surface_capabilities) {
+  if (surface_capabilities.supportedCompositeAlpha &
+      VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR) {
+    return VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR;
+  } else {
+    return VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+  }
+}
 
-  const VkCompositeAlphaFlagBitsKHR compositeAlpha =
-      (surface_capabilities.supportedCompositeAlpha &
-       VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR)
-          ? VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR
-          : VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+bool TizenRendererVulkan::InitializeSwapchain() {
+  if (resize_pending_) {
+    resize_pending_ = false;
+    vkDestroySwapchainKHR(logical_device_, swapchain_, nullptr);
+    vkQueueWaitIdle(graphics_queue_);
+    vkResetCommandPool(logical_device_, swapchain_command_pool_,
+                       VK_COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT);
+  }
+  uint32_t format_count;
+  if (vkGetPhysicalDeviceSurfaceFormatsKHR(
+          physical_device_, surface_, &format_count, nullptr) != VK_SUCCESS ||
+      format_count == 0) {
+    FT_LOG(Error)
+        << "Error occurred during presentation surface formats enumeration";
+    return false;
+  }
+  std::vector<VkSurfaceFormatKHR> formats(format_count);
+  if (vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device_, surface_,
+                                           &format_count,
+                                           formats.data()) != VK_SUCCESS) {
+    FT_LOG(Error)
+        << "Error occurred during presentation surface formats enumeration";
+    return false;
+  }
+  VkSurfaceCapabilitiesKHR surface_capabilities;
+  if (vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
+          physical_device_, surface_, &surface_capabilities) != VK_SUCCESS) {
+    FT_LOG(Error) << "Could not check presentation surface capabilities";
+    return false;
+  }
+
+  uint32_t mode_count;
+  if (vkGetPhysicalDeviceSurfacePresentModesKHR(
+          physical_device_, surface_, &mode_count, nullptr) != VK_SUCCESS) {
+    FT_LOG(Error) << "Error occurred during presentation surface present modes "
+                     "enumeration";
+    return false;
+  }
+  std::vector<VkPresentModeKHR> modes(mode_count);
+  if (vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device_, surface_,
+                                                &mode_count, modes.data())) {
+    FT_LOG(Error) << "Error occurred during presentation surface present modes "
+                     "enumeration";
+    return false;
+  }
+
+  surface_format_ = GetSwapChainFormat(formats);
+  VkExtent2D clientSize = GetSwapChainExtent(surface_capabilities);
+  uint32_t desiredImageCount = GetSwapChainNumImages(surface_capabilities);
+  VkPresentModeKHR present_mode = GetSwapChainPresentMode(modes);
+  VkCompositeAlphaFlagBitsKHR compositeAlpha =
+      GetSwapChainCompositeAlpha(surface_capabilities);
 
   VkSwapchainCreateInfoKHR info{};
   info.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
@@ -552,10 +634,8 @@ bool TizenRendererVulkan::InitializeSwapchain() {
   info.presentMode = present_mode;
   info.clipped = VK_TRUE;
 
-  auto result =
-      vkCreateSwapchainKHR(logical_device_, &info, nullptr, &swapchain_);
-  // CHECK_VK_RESULT(result);
-  if (result != VK_SUCCESS) {
+  if (vkCreateSwapchainKHR(logical_device_, &info, nullptr, &swapchain_) !=
+      VK_SUCCESS) {
     return false;
   }
 
@@ -564,11 +644,18 @@ bool TizenRendererVulkan::InitializeSwapchain() {
   // --------------------------------------------------------------------------
 
   uint32_t image_count;
-  vkGetSwapchainImagesKHR(logical_device_, swapchain_, &image_count, nullptr);
-  swapchain_images_.reserve(image_count);
+  if (vkGetSwapchainImagesKHR(logical_device_, swapchain_, &image_count,
+                              nullptr) != VK_SUCCESS) {
+    FT_LOG(Error) << "Could not get swap chain images count";
+    return false;
+  }
+  // swapchain_images_.reserve(image_count);
   swapchain_images_.resize(image_count);
-  vkGetSwapchainImagesKHR(logical_device_, swapchain_, &image_count,
-                          swapchain_images_.data());
+  if (vkGetSwapchainImagesKHR(logical_device_, swapchain_, &image_count,
+                              swapchain_images_.data()) != VK_SUCCESS) {
+    FT_LOG(Error) << "Could not get swap chain images";
+    return false;
+  }
 
   // --------------------------------------------------------------------------
   // Record a command buffer for each of the images to be executed prior to
@@ -614,7 +701,6 @@ bool TizenRendererVulkan::InitializeSwapchain() {
     vkCmdPipelineBarrier(buffer, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
                          VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0,
                          nullptr, 1, &barrier);
-
     vkEndCommandBuffer(buffer);
   }
   return true;
@@ -622,7 +708,11 @@ bool TizenRendererVulkan::InitializeSwapchain() {
 
 void TizenRendererVulkan::DestroySurface() {}
 
-void TizenRendererVulkan::ResizeSurface(int32_t width, int32_t height) {}
+void TizenRendererVulkan::ResizeSurface(int32_t width, int32_t height) {
+  width_ = width;
+  height_ = height;
+  resize_pending_ = true;
+}
 uint32_t TizenRendererVulkan::GetVersion() {
   return VK_MAKE_VERSION(1, 0, 0);
 }
@@ -648,16 +738,8 @@ uint32_t TizenRendererVulkan::GetQueueIndex() {
   return graphics_queue_family_index_;
 }
 
-size_t TizenRendererVulkan::GetEnabledInstanceExtensionCount() {
-  return enabled_instance_extensions_.size();
-}
-
 const char** TizenRendererVulkan::GetEnabledInstanceExtensions() {
   return enabled_instance_extensions_.data();
-}
-
-size_t TizenRendererVulkan::GetEnabledDeviceExtensionCount() {
-  return enabled_device_extensions_.size();
 }
 
 const char** TizenRendererVulkan::GetEnabledDeviceExtensions() {
@@ -673,6 +755,9 @@ void* TizenRendererVulkan::GetInstanceProcAddress(
 
 FlutterVulkanImage TizenRendererVulkan::GetNextImage(
     const FlutterFrameInfo* frameInfo) {
+  if (resize_pending_) {
+    InitializeSwapchain();
+  }
   vkAcquireNextImageKHR(logical_device_, swapchain_, UINT64_MAX, VK_NULL_HANDLE,
                         image_ready_fence_, &last_image_index_);
   vkWaitForFences(logical_device_, 1, &image_ready_fence_, true, UINT64_MAX);
@@ -710,4 +795,11 @@ bool TizenRendererVulkan::Present(const FlutterVulkanImage* image) {
   return result == VK_SUCCESS;
 }
 
+size_t TizenRendererVulkan::GetEnabledInstanceExtensionCount() {
+  return enabled_instance_extensions_.size();
+}
+
+size_t TizenRendererVulkan::GetEnabledDeviceExtensionCount() {
+  return enabled_device_extensions_.size();
+}
 }  // namespace flutter
