@@ -25,9 +25,7 @@ class TizenRendererVulkan : public TizenRenderer {
                      void* render_target_display,
                      int32_t width,
                      int32_t height) override;
-
   void DestroySurface() override;
-
   void ResizeSurface(int32_t width, int32_t height) override;
   uint32_t GetVersion();
   FlutterVulkanInstanceHandle GetInstanceHandle();
@@ -45,11 +43,11 @@ class TizenRendererVulkan : public TizenRenderer {
   bool Present(const FlutterVulkanImage* image);
 
  private:
+  bool CreateCommandPool();
   bool CreateInstance();
   bool CreateLogicalDevice();
-  bool CreateCommandPool();
-  bool CreateSemaphore();
   bool CreateFence();
+  bool CreateSemaphore();
   void Cleanup();
   bool CheckValidationLayerSupport();
   bool GetDeviceQueue();
@@ -65,6 +63,7 @@ class TizenRendererVulkan : public TizenRenderer {
       VkSurfaceCapabilitiesKHR& surface_capabilities);
   bool InitVulkan(TizenViewBase* view);
   bool InitializeSwapchain();
+  bool RecreateSwapChain();
   void PopulateDebugMessengerCreateInfo(
       VkDebugUtilsMessengerCreateInfoEXT& createInfo);
   bool PickPhysicalDevice();

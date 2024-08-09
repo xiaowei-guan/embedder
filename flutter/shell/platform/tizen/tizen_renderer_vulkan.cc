@@ -108,11 +108,12 @@ void TizenRendererVulkan::Cleanup() {
     if (swapchain_command_pool_) {
       vkDestroyCommandPool(logical_device_, swapchain_command_pool_, nullptr);
     }
+    if (swapchain_) {
+      vkDestroySwapchainKHR(logical_device_, swapchain_, nullptr);
+    }
     vkDestroyDevice(logical_device_, nullptr);
   }
-  if (surface_) {
-    vkDestroySurfaceKHR(instance_, surface_, nullptr);
-  }
+  DestroySurface();
   if (enable_validation_layers_) {
     DestroyDebugUtilsMessengerEXT(instance_, debug_messenger_, nullptr);
   }
@@ -706,7 +707,20 @@ bool TizenRendererVulkan::InitializeSwapchain() {
   return true;
 }
 
-void TizenRendererVulkan::DestroySurface() {}
+bool TizenRendererVulkan::RecreateSwapChain() {
+  resize_pending_ = false;
+  vkQueueWaitIdle(graphics_queue_);
+  vkDestroySwapchainKHR(logical_device_, swapchain_, nullptr);
+  vkResetCommandPool(logical_device_, swapchain_command_pool_,
+                     VK_COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT);
+  return InitializeSwapchain();
+}
+
+void TizenRendererVulkan::DestroySurface() {
+  if (surface_) {
+    vkDestroySurfaceKHR(instance_, surface_, nullptr);
+  }
+}
 
 void TizenRendererVulkan::ResizeSurface(int32_t width, int32_t height) {
   width_ = width;
@@ -756,7 +770,7 @@ void* TizenRendererVulkan::GetInstanceProcAddress(
 FlutterVulkanImage TizenRendererVulkan::GetNextImage(
     const FlutterFrameInfo* frameInfo) {
   if (resize_pending_) {
-    InitializeSwapchain();
+    RecreateSwapChain();
   }
   vkAcquireNextImageKHR(logical_device_, swapchain_, UINT64_MAX, VK_NULL_HANDLE,
                         image_ready_fence_, &last_image_index_);
@@ -774,12 +788,15 @@ bool TizenRendererVulkan::Present(const FlutterVulkanImage* image) {
       VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
   VkSubmitInfo submit_info{};
   submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+  submit_info.waitSemaphoreCount = 0;
+  submit_info.pWaitSemaphores = nullptr;
   submit_info.pWaitDstStageMask = &stage_flags;
   submit_info.commandBufferCount = 1;
   submit_info.pCommandBuffers = &present_transition_buffers_[last_image_index_];
   submit_info.signalSemaphoreCount = 1;
   submit_info.pSignalSemaphores = &present_transition_semaphore_;
-  vkQueueSubmit(graphics_queue_, 1, &submit_info, image_ready_fence_);
+  vkQueueSubmit(graphics_queue_, 1, &submit_info, VK_NULL_HANDLE);
+
   VkPresentInfoKHR present_info{};
   present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
   present_info.waitSemaphoreCount = 1;
@@ -788,8 +805,9 @@ bool TizenRendererVulkan::Present(const FlutterVulkanImage* image) {
   present_info.pSwapchains = &swapchain_;
   present_info.pImageIndices = &last_image_index_;
   VkResult result = vkQueuePresentKHR(graphics_queue_, &present_info);
+
   if (result == VK_SUBOPTIMAL_KHR || result == VK_ERROR_OUT_OF_DATE_KHR) {
-    InitializeSwapchain();
+    RecreateSwapChain();
   }
   vkQueueWaitIdle(graphics_queue_);
   return result == VK_SUCCESS;
