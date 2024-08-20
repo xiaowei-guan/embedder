@@ -232,7 +232,6 @@ bool FlutterTizenEngine::RunEngine() {
                   << result;
     return false;
   }
-
   internal_plugin_registrar_ =
       std::make_unique<PluginRegistrar>(plugin_registrar_.get());
   accessibility_channel_ = std::make_unique<AccessibilityChannel>(
@@ -243,7 +242,6 @@ bool FlutterTizenEngine::RunEngine() {
       internal_plugin_registrar_->messenger());
   settings_channel_ = std::make_unique<SettingsChannel>(
       internal_plugin_registrar_->messenger());
-
   if (IsHeaded()) {
     texture_registrar_ = std::make_unique<FlutterTizenTextureRegistrar>(this);
     keyboard_channel_ = std::make_unique<KeyboardChannel>(
@@ -257,7 +255,6 @@ bool FlutterTizenEngine::RunEngine() {
   accessibility_settings_ = std::make_unique<AccessibilitySettings>(this);
 
   SetupLocales();
-
   return true;
 }
 
@@ -536,6 +533,9 @@ FlutterRendererConfig FlutterTizenEngine::GetRendererConfig() {
       config.vulkan.enabled_device_extension_count =
           dynamic_cast<TizenRendererVulkan*>(renderer())
               ->GetEnabledDeviceExtensionCount();
+      config.vulkan.enabled_device_extensions =
+          dynamic_cast<TizenRendererVulkan*>(renderer())
+              ->GetEnabledDeviceExtensions();
       config.vulkan.get_instance_proc_address_callback =
           [](void* user_data, FlutterVulkanInstanceHandle instance,
              const char* name) -> void* {
