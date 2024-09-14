@@ -81,7 +81,7 @@ class TizenRendererVulkan : public TizenRenderer {
   VkSemaphore present_transition_semaphore_ = VK_NULL_HANDLE;
   VkFence image_ready_fence_ = VK_NULL_HANDLE;
   VkSwapchainKHR swapchain_ = VK_NULL_HANDLE;
-  VkCommandPool swapchain_command_pool_= VK_NULL_HANDLE;
+  VkCommandPool swapchain_command_pool_ = VK_NULL_HANDLE;
   std::vector<VkImage> swapchain_images_;
   std::vector<VkCommandBuffer> present_transition_buffers_;
   std::vector<const char*> enabled_device_extensions_;
