@@ -238,7 +238,7 @@ bool TizenRendererVulkan::CheckValidationLayerSupport() {
     bool layer_found = false;
     for (const auto& layer_properties : available_layers) {
       FT_LOG(Info) << "layer_properties.layerName : "
-                    << layer_properties.layerName;
+                   << layer_properties.layerName;
       if (strcmp(layer_name, layer_properties.layerName) == 0) {
         layer_found = true;
         break;
