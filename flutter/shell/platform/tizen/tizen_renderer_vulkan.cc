@@ -57,37 +57,30 @@ bool TizenRendererVulkan::InitVulkan(TizenViewBase* view) {
     FT_LOG(Error) << "Failed to create surface";
     return false;
   }
-
   if (!PickPhysicalDevice()) {
     FT_LOG(Error) << "Filed to pick physical device";
     return false;
   }
-
   if (!CreateLogicalDevice()) {
     FT_LOG(Error) << "Filed to create logical device";
     return false;
   }
-
   if (!GetDeviceQueue()) {
     FT_LOG(Error) << "Filed to get device queue";
     return false;
   }
-
   if (!CreateSemaphore()) {
     FT_LOG(Error) << "Filed to create semaphore";
     return false;
   }
-
   if (!CreateFence()) {
     FT_LOG(Error) << "Filed to create fence";
     return false;
   }
-
   if (!CreateCommandPool()) {
     FT_LOG(Error) << "Filed to create command pool";
     return false;
   }
-
   if (!InitializeSwapchain()) {
     FT_LOG(Error) << "Filed to initialize swapchain";
     return false;
@@ -231,23 +224,28 @@ void TizenRendererVulkan::SetupDebugMessenger() {
 bool TizenRendererVulkan::CheckValidationLayerSupport() {
   uint32_t layer_count;
   if (vkEnumerateInstanceLayerProperties(&layer_count, nullptr) != VK_SUCCESS) {
+    FT_LOG(Error) << "Failed to enumerate instance layer properties";
     return false;
   }
   std::vector<VkLayerProperties> available_layers(layer_count);
   if (vkEnumerateInstanceLayerProperties(
           &layer_count, available_layers.data()) != VK_SUCCESS) {
+    FT_LOG(Error) << "Failed to enumerate instance layer properties";
     return false;
   }
 
   for (const char* layer_name : validation_layers) {
     bool layer_found = false;
     for (const auto& layer_properties : available_layers) {
+      FT_LOG(Info) << "layer_properties.layerName : "
+                    << layer_properties.layerName;
       if (strcmp(layer_name, layer_properties.layerName) == 0) {
         layer_found = true;
         break;
       }
     }
     if (!layer_found) {
+      FT_LOG(Error) << "Layer requested is not available";
       return false;
     }
   }
@@ -292,6 +290,8 @@ bool TizenRendererVulkan::PickPhysicalDevice() {
     return false;
   }
 
+  FT_LOG(Info) << "Enumerating " << gpu_count << " physical device(s).";
+
   uint32_t selected_score = 0;
   for (const auto& physical_device : physical_devices) {
     VkPhysicalDeviceProperties properties;
@@ -321,62 +321,62 @@ bool TizenRendererVulkan::PickPhysicalDevice() {
           surface_present_supported) {
         graphics_queue_family = i;
       }
-      // Skip physical devices that don't have a graphics queue.
-      if (!graphics_queue_family.has_value()) {
-        FT_LOG(Info) << "Skipping due to no suitable graphics queues.";
-        continue;
-      }
+    }
+    // Skip physical devices that don't have a graphics queue.
+    if (!graphics_queue_family.has_value()) {
+      FT_LOG(Info) << "Skipping due to no suitable graphics queues.";
+      continue;
+    }
 
-      // Prefer discrete GPUs.
-      if (properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
-        score += 1 << 30;
-      }
-      uint32_t extension_count;
-      vkEnumerateDeviceExtensionProperties(physical_device, nullptr,
-                                           &extension_count, nullptr);
-      std::vector<VkExtensionProperties> available_extensions(extension_count);
-      vkEnumerateDeviceExtensionProperties(physical_device, nullptr,
-                                           &extension_count,
-                                           available_extensions.data());
+    // Prefer discrete GPUs.
+    if (properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
+      score += 1 << 30;
+    }
+    uint32_t extension_count;
+    vkEnumerateDeviceExtensionProperties(physical_device, nullptr,
+                                         &extension_count, nullptr);
+    std::vector<VkExtensionProperties> available_extensions(extension_count);
+    vkEnumerateDeviceExtensionProperties(physical_device, nullptr,
+                                         &extension_count,
+                                         available_extensions.data());
 
-      bool supports_swapchain = false;
-      for (const auto& available_extension : available_extensions) {
-        if (strcmp(VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-                   available_extension.extensionName) == 0) {
-          supports_swapchain = true;
-          supported_extensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
-        }
-        // The spec requires VK_KHR_portability_subset be enabled whenever it's
-        // available on a device. It's present on compatibility ICDs like
-        // MoltenVK.
-        else if (strcmp("VK_KHR_portability_subset",
-                        available_extension.extensionName) == 0) {
-          supported_extensions.push_back("VK_KHR_portability_subset");
-        }
-        // Prefer GPUs that support VK_KHR_get_memory_requirements2.
-        else if (strcmp(VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME,
-                        available_extension.extensionName) == 0) {
-          score += 1 << 29;
-          supported_extensions.push_back(
-              VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME);
-        }
+    bool supports_swapchain = false;
+    for (const auto& available_extension : available_extensions) {
+      if (strcmp(VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+                 available_extension.extensionName) == 0) {
+        supports_swapchain = true;
+        supported_extensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
       }
-      // Skip physical devices that don't have swapchain support.
-      if (!supports_swapchain) {
-        FT_LOG(Info) << "Skipping due to lack of swapchain support.";
-        continue;
+      // The spec requires VK_KHR_portability_subset be enabled whenever it's
+      // available on a device. It's present on compatibility ICDs like
+      // MoltenVK.
+      else if (strcmp("VK_KHR_portability_subset",
+                      available_extension.extensionName) == 0) {
+        supported_extensions.push_back("VK_KHR_portability_subset");
       }
-      // Prefer GPUs with larger max texture sizes.
-      score += properties.limits.maxImageDimension2D;
-      if (selected_score < score) {
-        FT_LOG(Info) << "This is the best device so far. Score: " << score;
+      // Prefer GPUs that support VK_KHR_get_memory_requirements2.
+      else if (strcmp(VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME,
+                      available_extension.extensionName) == 0) {
+        score += 1 << 29;
+        supported_extensions.push_back(
+            VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME);
+      }
+    }
+    // Skip physical devices that don't have swapchain support.
+    if (!supports_swapchain) {
+      FT_LOG(Info) << "Skipping due to lack of swapchain support.";
+      continue;
+    }
+    // Prefer GPUs with larger max texture sizes.
+    score += properties.limits.maxImageDimension2D;
+    if (selected_score < score) {
+      FT_LOG(Info) << "This is the best device so far. Score: " << score;
 
-        selected_score = score;
-        physical_device_ = physical_device;
-        enabled_device_extensions_ = supported_extensions;
-        graphics_queue_family_index_ = graphics_queue_family.value_or(
-            std::numeric_limits<uint32_t>::max());
-      }
+      selected_score = score;
+      physical_device_ = physical_device;
+      enabled_device_extensions_ = supported_extensions;
+      graphics_queue_family_index_ =
+          graphics_queue_family.value_or(std::numeric_limits<uint32_t>::max());
     }
   }
   return physical_device_ != VK_NULL_HANDLE;
@@ -568,13 +568,6 @@ VkCompositeAlphaFlagBitsKHR TizenRendererVulkan::GetSwapChainCompositeAlpha(
 }
 
 bool TizenRendererVulkan::InitializeSwapchain() {
-  if (resize_pending_) {
-    resize_pending_ = false;
-    vkDestroySwapchainKHR(logical_device_, swapchain_, nullptr);
-    vkQueueWaitIdle(graphics_queue_);
-    vkResetCommandPool(logical_device_, swapchain_command_pool_,
-                       VK_COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT);
-  }
   uint32_t format_count;
   if (vkGetPhysicalDeviceSurfaceFormatsKHR(
           physical_device_, surface_, &format_count, nullptr) != VK_SUCCESS ||

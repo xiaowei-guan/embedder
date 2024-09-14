@@ -69,28 +69,28 @@ class TizenRendererVulkan : public TizenRenderer {
   bool PickPhysicalDevice();
   void SetupDebugMessenger();
 
-  bool enable_validation_layers_ = true;
+  bool enable_validation_layers_ = false;
 
-  VkDebugUtilsMessengerEXT debug_messenger_;
-  VkDevice logical_device_;
-  VkInstance instance_;
-  VkPhysicalDevice physical_device_;
-  VkQueue graphics_queue_;
-  VkSurfaceKHR surface_;
+  VkDebugUtilsMessengerEXT debug_messenger_ = VK_NULL_HANDLE;
+  VkDevice logical_device_ = VK_NULL_HANDLE;
+  VkInstance instance_ = VK_NULL_HANDLE;
+  VkPhysicalDevice physical_device_ = VK_NULL_HANDLE;
+  VkQueue graphics_queue_ = VK_NULL_HANDLE;
+  VkSurfaceKHR surface_ = VK_NULL_HANDLE;
   VkSurfaceFormatKHR surface_format_;
-  VkSemaphore present_transition_semaphore_;
-  VkFence image_ready_fence_;
-  VkSwapchainKHR swapchain_;
-  VkCommandPool swapchain_command_pool_;
+  VkSemaphore present_transition_semaphore_ = VK_NULL_HANDLE;
+  VkFence image_ready_fence_ = VK_NULL_HANDLE;
+  VkSwapchainKHR swapchain_ = VK_NULL_HANDLE;
+  VkCommandPool swapchain_command_pool_= VK_NULL_HANDLE;
   std::vector<VkImage> swapchain_images_;
   std::vector<VkCommandBuffer> present_transition_buffers_;
   std::vector<const char*> enabled_device_extensions_;
   std::vector<const char*> enabled_instance_extensions_;
-  uint32_t graphics_queue_family_index_;
-  uint32_t last_image_index_;
+  uint32_t graphics_queue_family_index_ = 0;
+  uint32_t last_image_index_ = 0;
   bool resize_pending_ = false;
-  uint32_t width_;
-  uint32_t height_;
+  uint32_t width_ = 0;
+  uint32_t height_ = 0;
 };
 }  // namespace flutter
 

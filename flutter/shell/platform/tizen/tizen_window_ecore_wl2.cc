@@ -247,30 +247,29 @@ void TizenWindowEcoreWl2::RegisterEventHandlers() {
         return ECORE_CALLBACK_PASS_ON;
       },
       this));
-
-  ecore_event_handlers_.push_back(ecore_event_handler_add(
-      ECORE_WL2_EVENT_WINDOW_CONFIGURE,
-      [](void* data, int type, void* event) -> Eina_Bool {
-        auto* self = static_cast<TizenWindowEcoreWl2*>(data);
-        if (self->view_delegate_) {
-          auto* configure_event =
-              reinterpret_cast<Ecore_Wl2_Event_Window_Configure*>(event);
-          if (configure_event->win == self->GetWindowId()) {
-            ecore_wl2_egl_window_resize_with_rotation(
-                self->ecore_wl2_egl_window_, configure_event->x,
-                configure_event->y, configure_event->w, configure_event->h,
-                self->GetRotation());
-
-            self->view_delegate_->OnResize(
-                configure_event->x, configure_event->y, configure_event->w,
-                configure_event->h);
-            return ECORE_CALLBACK_DONE;
+  if (!is_vulkan_) {
+    ecore_event_handlers_.push_back(ecore_event_handler_add(
+        ECORE_WL2_EVENT_WINDOW_CONFIGURE,
+        [](void* data, int type, void* event) -> Eina_Bool {
+          auto* self = static_cast<TizenWindowEcoreWl2*>(data);
+          if (self->view_delegate_) {
+            auto* configure_event =
+                reinterpret_cast<Ecore_Wl2_Event_Window_Configure*>(event);
+            if (configure_event->win == self->GetWindowId()) {
+              ecore_wl2_egl_window_resize_with_rotation(
+                  self->ecore_wl2_egl_window_, configure_event->x,
+                  configure_event->y, configure_event->w, configure_event->h,
+                  self->GetRotation());
+              self->view_delegate_->OnResize(
+                  configure_event->x, configure_event->y, configure_event->w,
+                  configure_event->h);
+              return ECORE_CALLBACK_DONE;
+            }
           }
-        }
-        return ECORE_CALLBACK_PASS_ON;
-      },
-      this));
-
+          return ECORE_CALLBACK_PASS_ON;
+        },
+        this));
+  }
   ecore_event_handlers_.push_back(ecore_event_handler_add(
       ECORE_EVENT_MOUSE_BUTTON_DOWN,
       [](void* data, int type, void* event) -> Eina_Bool {
