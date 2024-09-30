@@ -91,19 +91,21 @@ bool TizenRendererVulkan::InitVulkan(TizenViewBase* view) {
 
 void TizenRendererVulkan::Cleanup() {
   if (logical_device_) {
-    if (image_ready_fence_) {
-      vkDestroyFence(logical_device_, image_ready_fence_, nullptr);
+    for (size_t i = 0; i < present_transition_buffers_.size(); ++i) {
+      vkFreeCommandBuffers(logical_device_, swapchain_command_pool_, 1,
+                           &present_transition_buffers_[i]);
     }
-    if (present_transition_semaphore_) {
-      vkDestroySemaphore(logical_device_, present_transition_semaphore_,
-                         nullptr);
+    for (size_t i = 0; i < swapchain_images_.size(); ++i) {
+      vkDestroyImage(logical_device_, swapchain_images_[i], nullptr);
     }
-    if (swapchain_command_pool_) {
-      vkDestroyCommandPool(logical_device_, swapchain_command_pool_, nullptr);
-    }
-    if (swapchain_) {
+
+    if (swapchain_ != VK_NULL_HANDLE) {
       vkDestroySwapchainKHR(logical_device_, swapchain_, nullptr);
+      swapchain_ = VK_NULL_HANDLE;
     }
+    DestroyCommandPool();
+    vkDestroyFence(logical_device_, image_ready_fence_, nullptr);
+    vkDestroySemaphore(logical_device_, present_transition_semaphore_, nullptr);
     vkDestroyDevice(logical_device_, nullptr);
   }
   DestroySurface();
@@ -465,10 +467,17 @@ bool TizenRendererVulkan::CreateCommandPool() {
   return true;
 }
 
+void TizenRendererVulkan::DestroyCommandPool() {
+  if (swapchain_command_pool_) {
+    vkDestroyCommandPool(logical_device_, swapchain_command_pool_, nullptr);
+    swapchain_command_pool_ = VK_NULL_HANDLE;
+  }
+}
+
 bool TizenRendererVulkan::CreateSemaphore() {
-  VkSemaphoreCreateInfo s_info{};
-  s_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-  if (vkCreateSemaphore(logical_device_, &s_info, nullptr,
+  VkSemaphoreCreateInfo semaphore_info{};
+  semaphore_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+  if (vkCreateSemaphore(logical_device_, &semaphore_info, nullptr,
                         &present_transition_semaphore_) != VK_SUCCESS) {
     FT_LOG(Error) << "Failed to create semaphore.";
     return false;
@@ -477,13 +486,14 @@ bool TizenRendererVulkan::CreateSemaphore() {
 }
 
 bool TizenRendererVulkan::CreateFence() {
-  VkFenceCreateInfo f_info{};
-  f_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-  if (vkCreateFence(logical_device_, &f_info, nullptr, &image_ready_fence_) !=
-      VK_SUCCESS) {
-    FT_LOG(Error) << "Failed to create fence.";
+  VkFenceCreateInfo fence_info{};
+  fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+  if (vkCreateFence(logical_device_, &fence_info, nullptr,
+                    &image_ready_fence_) != VK_SUCCESS) {
+    FT_LOG(Error) << "Failed to create image ready fence.";
     return false;
   }
+
   return true;
 }
 
@@ -568,6 +578,7 @@ VkCompositeAlphaFlagBitsKHR TizenRendererVulkan::GetSwapChainCompositeAlpha(
 }
 
 bool TizenRendererVulkan::InitializeSwapchain() {
+  VkSwapchainKHR oldSwapchain = swapchain_;
   uint32_t format_count;
   if (vkGetPhysicalDeviceSurfaceFormatsKHR(
           physical_device_, surface_, &format_count, nullptr) != VK_SUCCESS ||
@@ -623,6 +634,8 @@ bool TizenRendererVulkan::InitializeSwapchain() {
   info.imageArrayLayers = 1;
   info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
   info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+  info.queueFamilyIndexCount = 0;
+  info.pQueueFamilyIndices = nullptr;
   info.preTransform = surface_capabilities.currentTransform;
   info.compositeAlpha = compositeAlpha;
   info.presentMode = present_mode;
@@ -630,7 +643,12 @@ bool TizenRendererVulkan::InitializeSwapchain() {
 
   if (vkCreateSwapchainKHR(logical_device_, &info, nullptr, &swapchain_) !=
       VK_SUCCESS) {
+    FT_LOG(Error) << "Could not create swap chain KHR";
     return false;
+  }
+
+  if (oldSwapchain != VK_NULL_HANDLE) {
+    vkDestroySwapchainKHR(logical_device_, oldSwapchain, nullptr);
   }
 
   // --------------------------------------------------------------------------
@@ -665,15 +683,23 @@ bool TizenRendererVulkan::InitializeSwapchain() {
   buffers_info.commandBufferCount =
       static_cast<uint32_t>(present_transition_buffers_.size());
 
-  vkAllocateCommandBuffers(logical_device_, &buffers_info,
-                           present_transition_buffers_.data());
+  if (vkAllocateCommandBuffers(logical_device_, &buffers_info,
+                               present_transition_buffers_.data()) !=
+      VK_SUCCESS) {
+    FT_LOG(Error) << "Could not allocate command buffers for swapchain images!";
+    return false;
+  }
   for (size_t i = 0; i < swapchain_images_.size(); i++) {
     auto image = swapchain_images_[i];
     auto buffer = present_transition_buffers_[i];
 
     VkCommandBufferBeginInfo begin_info{};
     begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    vkBeginCommandBuffer(buffer, &begin_info);
+
+    if (vkBeginCommandBuffer(buffer, &begin_info) != VK_SUCCESS) {
+      FT_LOG(Error) << "Could not begin command buffer!";
+      return false;
+    }
 
     // Filament Engine hands back the image after writing to it
     VkImageMemoryBarrier barrier{};
@@ -695,18 +721,31 @@ bool TizenRendererVulkan::InitializeSwapchain() {
     vkCmdPipelineBarrier(buffer, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
                          VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0,
                          nullptr, 1, &barrier);
-    vkEndCommandBuffer(buffer);
+    if (vkEndCommandBuffer(buffer) != VK_SUCCESS) {
+      FT_LOG(Error) << "Could not end command buffer!";
+      return false;
+    }
   }
   return true;
 }
 
 bool TizenRendererVulkan::RecreateSwapChain() {
+  vkDeviceWaitIdle(logical_device_);
   resize_pending_ = false;
-  vkQueueWaitIdle(graphics_queue_);
-  vkDestroySwapchainKHR(logical_device_, swapchain_, nullptr);
-  vkResetCommandPool(logical_device_, swapchain_command_pool_,
-                     VK_COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT);
-  return InitializeSwapchain();
+  for (size_t i = 0; i < present_transition_buffers_.size(); ++i) {
+    vkFreeCommandBuffers(logical_device_, swapchain_command_pool_, 1,
+                         &present_transition_buffers_[i]);
+  }
+  DestroyCommandPool();
+  if (!CreateCommandPool()) {
+    FT_LOG(Error) << "Fail to create command pool!";
+    return false;
+  }
+  if (!InitializeSwapchain()) {
+    FT_LOG(Error) << "Fail to create swapchain!";
+    return false;
+  }
+  return true;
 }
 
 void TizenRendererVulkan::DestroySurface() {
@@ -716,9 +755,11 @@ void TizenRendererVulkan::DestroySurface() {
 }
 
 void TizenRendererVulkan::ResizeSurface(int32_t width, int32_t height) {
-  width_ = width;
-  height_ = height;
-  resize_pending_ = true;
+  if (width_ != width || height_ != height) {
+    width_ = width;
+    height_ = height;
+    resize_pending_ = true;
+  }
 }
 uint32_t TizenRendererVulkan::GetVersion() {
   return VK_MAKE_VERSION(1, 0, 0);
@@ -765,14 +806,24 @@ FlutterVulkanImage TizenRendererVulkan::GetNextImage(
   if (resize_pending_) {
     RecreateSwapChain();
   }
-  vkAcquireNextImageKHR(logical_device_, swapchain_, UINT64_MAX, VK_NULL_HANDLE,
-                        image_ready_fence_, &last_image_index_);
-  vkWaitForFences(logical_device_, 1, &image_ready_fence_, true, UINT64_MAX);
+  VkResult result;
+  do {
+    result = vkAcquireNextImageKHR(logical_device_, swapchain_, UINT64_MAX,
+                                   VK_NULL_HANDLE, image_ready_fence_,
+                                   &last_image_index_);
+    if (result == VK_ERROR_OUT_OF_DATE_KHR) {
+      RecreateSwapChain();
+    } else if (result == VK_SUBOPTIMAL_KHR) {
+      break;
+    }
+  } while (result != VK_SUCCESS);
+
+  vkWaitForFences(logical_device_, 1, &image_ready_fence_, VK_TRUE, UINT64_MAX);
   vkResetFences(logical_device_, 1, &image_ready_fence_);
   return {
       .struct_size = sizeof(FlutterVulkanImage),
       .image = reinterpret_cast<uint64_t>(swapchain_images_[last_image_index_]),
-      .format = surface_format_.format,
+      .format = static_cast<uint32_t>(surface_format_.format),
   };
 }
 
@@ -782,7 +833,7 @@ bool TizenRendererVulkan::Present(const FlutterVulkanImage* image) {
   VkSubmitInfo submit_info{};
   submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
   submit_info.waitSemaphoreCount = 0;
-  submit_info.pWaitSemaphores = nullptr;
+  submit_info.pWaitSemaphores = VK_NULL_HANDLE;
   submit_info.pWaitDstStageMask = &stage_flags;
   submit_info.commandBufferCount = 1;
   submit_info.pCommandBuffers = &present_transition_buffers_[last_image_index_];
@@ -802,7 +853,7 @@ bool TizenRendererVulkan::Present(const FlutterVulkanImage* image) {
   if (result == VK_SUBOPTIMAL_KHR || result == VK_ERROR_OUT_OF_DATE_KHR) {
     RecreateSwapChain();
   }
-  vkQueueWaitIdle(graphics_queue_);
+  vkDeviceWaitIdle(logical_device_);
   return result == VK_SUCCESS;
 }
 
