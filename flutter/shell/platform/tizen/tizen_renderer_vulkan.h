@@ -50,6 +50,7 @@ class TizenRendererVulkan : public TizenRenderer {
   bool CreateSemaphore();
   void Cleanup();
   bool CheckValidationLayerSupport();
+  void DestroyCommandPool();
   bool GetDeviceQueue();
   bool GetRequiredExtensions(std::vector<const char*>& extensions);
   VkSurfaceFormatKHR GetSwapChainFormat(
@@ -89,8 +90,8 @@ class TizenRendererVulkan : public TizenRenderer {
   uint32_t graphics_queue_family_index_ = 0;
   uint32_t last_image_index_ = 0;
   bool resize_pending_ = false;
-  uint32_t width_ = 0;
-  uint32_t height_ = 0;
+  int32_t width_ = 0;
+  int32_t height_ = 0;
 };
 }  // namespace flutter
 
