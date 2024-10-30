@@ -21,7 +21,7 @@ class ExternalTexturePixelEGLImpeller : public ExternalTexture {
 
   bool PopulateTexture(size_t width,
                        size_t height,
-                       FlutterOpenGLTexture* opengl_texture) override;
+                       void* flutter_texture) override;
 
  private:
   FlutterDesktopPixelBufferTextureCallback texture_callback_ = nullptr;

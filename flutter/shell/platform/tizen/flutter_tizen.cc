@@ -222,7 +222,7 @@ FlutterDesktopViewRef FlutterDesktopViewCreateFromNewWindow(
   // Take ownership of the engine, starting it if necessary.
   view->SetEngine(
       std::unique_ptr<flutter::FlutterTizenEngine>(EngineFromHandle(engine)),
-      window_properties.renderer_type);
+      FlutterDesktopRendererType::kEVulkan);
   if (!view->engine()->IsRunning()) {
     if (!view->engine()->RunEngine()) {
       return nullptr;

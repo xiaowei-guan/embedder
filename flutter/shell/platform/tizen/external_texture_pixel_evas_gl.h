@@ -21,13 +21,14 @@ class ExternalTexturePixelEvasGL : public ExternalTexture {
 
   bool PopulateTexture(size_t width,
                        size_t height,
-                       FlutterOpenGLTexture* opengl_texture) override;
+                       void* flutter_texture) override;
 
   bool CopyPixelBuffer(size_t& width, size_t& height);
 
  private:
   FlutterDesktopPixelBufferTextureCallback texture_callback_ = nullptr;
   void* user_data_ = nullptr;
+  std::unique_ptr<ExternalTextureGLState> state_;
 };
 
 }  // namespace flutter
