@@ -10,15 +10,16 @@
 
 namespace flutter {
 
-bool ExternalTexturePixelEGL::PopulateTexture(
-    size_t width,
-    size_t height,
-    FlutterOpenGLTexture* opengl_texture) {
+bool ExternalTexturePixelEGL::PopulateTexture(size_t width,
+                                              size_t height,
+                                              void* flutter_texture) {
   if (!CopyPixelBuffer(width, height)) {
     return false;
   }
 
   // Populate the texture object used by the engine.
+  FlutterOpenGLTexture* opengl_texture =
+      static_cast<FlutterOpenGLTexture*>(flutter_texture);
   opengl_texture->target = GL_TEXTURE_2D;
   opengl_texture->name = state_->gl_texture;
   opengl_texture->format = GL_RGBA8;
@@ -34,7 +35,8 @@ ExternalTexturePixelEGL::ExternalTexturePixelEGL(
     void* user_data)
     : ExternalTexture(),
       texture_callback_(texture_callback),
-      user_data_(user_data) {}
+      user_data_(user_data),
+      state_(std::make_unique<ExternalTextureGLState>()) {}
 
 bool ExternalTexturePixelEGL::CopyPixelBuffer(size_t& width, size_t& height) {
   if (!texture_callback_) {

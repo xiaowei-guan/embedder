@@ -97,6 +97,7 @@ template("embedder") {
       "external_texture_pixel_egl.cc",
       "external_texture_pixel_egl_impeller.cc",
       "external_texture_pixel_evas_gl.cc",
+      "external_texture_pixel_vulkan.cc",
       "external_texture_surface_egl.cc",
       "external_texture_surface_egl_impeller.cc",
       "external_texture_surface_evas_gl.cc",

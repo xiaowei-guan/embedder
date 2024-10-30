@@ -32,7 +32,7 @@ class ExternalTextureSurfaceEGLImpeller : public ExternalTexture {
   // Returns true on success, false on failure.
   bool PopulateTexture(size_t width,
                        size_t height,
-                       FlutterOpenGLTexture* opengl_texture) override;
+                       void* flutter_texture) override;
 
  private:
   static bool OnBindCallback(void* user_data);
@@ -44,6 +44,7 @@ class ExternalTextureSurfaceEGLImpeller : public ExternalTexture {
   void* user_data_ = nullptr;
   EGLImageKHR egl_src_image_ = nullptr;
   void* last_surface_handle_ = nullptr;
+  std::unique_ptr<ExternalTextureGLState> state_;
 };
 
 }  // namespace flutter

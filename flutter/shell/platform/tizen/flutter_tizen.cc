@@ -209,9 +209,7 @@ FlutterDesktopViewRef FlutterDesktopViewCreateFromNewWindow(
   } else {
     window = std::make_unique<flutter::TizenWindowEcoreWl2>(
         window_geometry, window_properties.transparent,
-        window_properties.focusable, window_properties.top_level,
-        window_properties.renderer_type ==
-            FlutterDesktopRendererType::kEVulkan);
+        window_properties.focusable, window_properties.top_level,true);
   }
 
   auto view = std::make_unique<flutter::FlutterTizenView>(
@@ -220,7 +218,7 @@ FlutterDesktopViewRef FlutterDesktopViewCreateFromNewWindow(
   // Take ownership of the engine, starting it if necessary.
   view->SetEngine(
       std::unique_ptr<flutter::FlutterTizenEngine>(EngineFromHandle(engine)),
-      window_properties.renderer_type);
+      FlutterDesktopRendererType::kEVulkan);
   if (!view->engine()->IsRunning()) {
     if (!view->engine()->RunEngine()) {
       return nullptr;

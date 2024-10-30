@@ -12,10 +12,9 @@
 
 namespace flutter {
 
-bool ExternalTexturePixelEGLImpeller::PopulateTexture(
-    size_t width,
-    size_t height,
-    FlutterOpenGLTexture* opengl_texture) {
+bool ExternalTexturePixelEGLImpeller::PopulateTexture(size_t width,
+                                                      size_t height,
+                                                      void* flutter_texture) {
   if (!texture_callback_) {
     return false;
   }
@@ -29,6 +28,9 @@ bool ExternalTexturePixelEGLImpeller::PopulateTexture(
 
   width = pixel_buffer->width;
   height = pixel_buffer->height;
+
+  FlutterOpenGLTexture* opengl_texture =
+      static_cast<FlutterOpenGLTexture*>(flutter_texture);
 
   // Populate the texture object used by the engine.
   opengl_texture->impeller_texture_type =

@@ -18,9 +18,10 @@ ExternalTextureSurfaceEvasGL::ExternalTextureSurfaceEvasGL(
     ExternalTextureExtensionType gl_extension,
     FlutterDesktopGpuSurfaceTextureCallback texture_callback,
     void* user_data)
-    : ExternalTexture(gl_extension),
+    : ExternalTexture(),
       texture_callback_(texture_callback),
-      user_data_(user_data) {}
+      user_data_(user_data),
+      state_(std::make_unique<ExternalTextureGLState>()) {}
 
 ExternalTextureSurfaceEvasGL::~ExternalTextureSurfaceEvasGL() {
   if (state_->gl_texture != 0) {
@@ -28,10 +29,9 @@ ExternalTextureSurfaceEvasGL::~ExternalTextureSurfaceEvasGL() {
   }
 }
 
-bool ExternalTextureSurfaceEvasGL::PopulateTexture(
-    size_t width,
-    size_t height,
-    FlutterOpenGLTexture* opengl_texture) {
+bool ExternalTextureSurfaceEvasGL::PopulateTexture(size_t width,
+                                                   size_t height,
+                                                   void* flutter_texture) {
   if (!texture_callback_) {
     return false;
   }
@@ -101,7 +101,8 @@ bool ExternalTextureSurfaceEvasGL::PopulateTexture(
   if (evasgl_src_image) {
     evasglDestroyImage(evasgl_src_image);
   }
-
+  FlutterOpenGLTexture* opengl_texture =
+      static_cast<FlutterOpenGLTexture*>(flutter_texture);
   opengl_texture->target = GL_TEXTURE_EXTERNAL_OES;
   opengl_texture->name = state_->gl_texture;
   opengl_texture->format = GL_RGBA8;
