@@ -41,6 +41,8 @@ class TizenRendererVulkan : public TizenRenderer {
                                const char* name);
   FlutterVulkanImage GetNextImage(const FlutterFrameInfo* frameInfo);
   bool Present(const FlutterVulkanImage* image);
+  VkCommandBuffer BeginSingleTimeCommands();
+  void EndSingleTimeCommands(VkCommandBuffer commandBuffer);
 
  private:
   bool CreateCommandPool();

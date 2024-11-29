@@ -571,6 +571,16 @@ FlutterRendererConfig FlutterTizenEngine::GetRendererConfig() {
         return dynamic_cast<TizenRendererVulkan*>(engine->renderer())
             ->Present(image);
       };
+      config.vulkan.external_texture_frame_callback =
+          [](void* user_data, int64_t texture_id, size_t width, size_t height,
+             FlutterVulkanTexture* texture) -> bool {
+        auto* engine = static_cast<FlutterTizenEngine*>(user_data);
+        if (!engine->texture_registrar()) {
+          return false;
+        }
+        return engine->texture_registrar()->PopulateTexture(texture_id, width,
+                                                            height, texture);
+      };
     } else {
       config.type = kSoftware;
       config.software.struct_size = sizeof(config.software);
