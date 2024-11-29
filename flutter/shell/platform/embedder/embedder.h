@@ -854,16 +854,18 @@ typedef bool (*FlutterVulkanPresentCallback)(
     const FlutterVulkanImage* /* image */);
 
 typedef struct {
-  const FlutterVulkanImage* image;
+  /// Handle to the VkImage that is owned by the embedder. The engine will
+  /// bind this image for writing the frame.
+  FlutterVulkanImageHandle image;
+  /// The VkFormat of the image (for example: VK_FORMAT_R8G8B8A8_UNORM).
+  uint32_t format;
   /// User data to be returned on the invocation of the destruction callback.
   void* user_data;
   /// Callback invoked (on an engine managed thread) that asks the embedder to
   /// collect the texture.
   VoidCallback destruction_callback;
   /// Optional parameters for texture height/width, default is 0, non-zero means
-  /// the texture has the specified width/height. Usually, when the texture type
-  /// is GL_TEXTURE_RECTANGLE, we need to specify the texture width/height to
-  /// tell the embedder to scale when rendering.
+  /// the texture has the specified width/height.
   /// Width of the texture.
   size_t width;
   /// Height of the texture.
@@ -882,7 +884,6 @@ typedef bool (*FlutterVulkanTextureFrameCallback)(
 typedef struct {
   /// The size of this struct. Must be sizeof(FlutterVulkanRendererConfig).
   size_t struct_size;
-
   /// The Vulkan API version. This should match the value set in
   /// VkApplicationInfo::apiVersion when the VkInstance was created.
   uint32_t version;
