@@ -90,11 +90,10 @@ bool FlutterTizenTextureRegistrar::MarkTextureFrameAvailable(
   return engine_->MarkExternalTextureFrameAvailable(texture_id);
 }
 
-bool FlutterTizenTextureRegistrar::PopulateTexture(
-    int64_t texture_id,
-    size_t width,
-    size_t height,
-    void* opengl_texture) {
+bool FlutterTizenTextureRegistrar::PopulateTexture(int64_t texture_id,
+                                                   size_t width,
+                                                   size_t height,
+                                                   void* opengl_texture) {
   ExternalTexture* texture;
   {
     std::lock_guard<std::mutex> lock(map_mutex_);
@@ -152,6 +151,7 @@ FlutterTizenTextureRegistrar::CreateExternalTexture(
             gl_extension, texture_info->gpu_surface_config.callback,
             texture_info->gpu_surface_config.user_data);
       }
+
       if (enable_impeller_) {
         return std::make_unique<ExternalTextureSurfaceEGLImpeller>(
             gl_extension, texture_info->gpu_surface_config.callback,
