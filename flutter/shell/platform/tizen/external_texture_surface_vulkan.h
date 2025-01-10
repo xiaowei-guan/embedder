@@ -31,6 +31,9 @@ class ExternalTextureSurfaceVulkan : public ExternalTexture {
                        void* flutter_texture) override;
 
  private:
+  bool BindImageMemory(tbm_surface_h tbm_surface);
+  bool BindImageMemoryMultiBos(tbm_surface_h tbm_surface);
+  bool BindImageMemoryOneBos(tbm_surface_h tbm_surface);
   bool CreateOrUpdateImage(
       const FlutterDesktopGpuSurfaceDescriptor* descriptor);
   bool CreateImage(tbm_surface_info_s tbm_surface_info);
@@ -42,12 +45,12 @@ class ExternalTextureSurfaceVulkan : public ExternalTexture {
                       VkMemoryPropertyFlags properties,
                       uint32_t& index_out);
   void ReleaseImage();
+  bool SupportDisjoint();
   bool AllocateMemory(tbm_surface_h tbm_surface);
   bool AllocateMemory(VkImage image,
-                      VkMemoryPropertyFlags memory_properties,
                       int fd,
                       VkDeviceSize import_size,
-                      VkDeviceMemory memory);
+                      VkDeviceMemory& memory);
   FlutterDesktopGpuSurfaceTextureCallback texture_callback_ = nullptr;
   void* user_data_ = nullptr;
   TizenRendererVulkan* vulkan_renderer_ = nullptr;

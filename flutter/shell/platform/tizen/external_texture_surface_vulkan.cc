@@ -12,6 +12,35 @@
 #include "flutter/shell/platform/tizen/logger.h"
 
 namespace flutter {
+
+bool IsMultiPlanarVkFormat(VkFormat format) {
+  switch (format) {
+    case VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM:
+    case VK_FORMAT_G8_B8R8_2PLANE_420_UNORM:
+    case VK_FORMAT_G8_B8_R8_3PLANE_422_UNORM:
+    case VK_FORMAT_G8_B8R8_2PLANE_422_UNORM:
+    case VK_FORMAT_G8_B8_R8_3PLANE_444_UNORM:
+    case VK_FORMAT_G10X6_B10X6_R10X6_3PLANE_420_UNORM_3PACK16:
+    case VK_FORMAT_G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16:
+    case VK_FORMAT_G10X6_B10X6_R10X6_3PLANE_422_UNORM_3PACK16:
+    case VK_FORMAT_G10X6_B10X6R10X6_2PLANE_422_UNORM_3PACK16:
+    case VK_FORMAT_G10X6_B10X6_R10X6_3PLANE_444_UNORM_3PACK16:
+    case VK_FORMAT_G12X4_B12X4_R12X4_3PLANE_420_UNORM_3PACK16:
+    case VK_FORMAT_G12X4_B12X4R12X4_2PLANE_420_UNORM_3PACK16:
+    case VK_FORMAT_G12X4_B12X4_R12X4_3PLANE_422_UNORM_3PACK16:
+    case VK_FORMAT_G12X4_B12X4R12X4_2PLANE_422_UNORM_3PACK16:
+    case VK_FORMAT_G12X4_B12X4_R12X4_3PLANE_444_UNORM_3PACK16:
+    case VK_FORMAT_G16_B16_R16_3PLANE_420_UNORM:
+    case VK_FORMAT_G16_B16R16_2PLANE_420_UNORM:
+    case VK_FORMAT_G16_B16_R16_3PLANE_422_UNORM:
+    case VK_FORMAT_G16_B16R16_2PLANE_422_UNORM:
+    case VK_FORMAT_G16_B16_R16_3PLANE_444_UNORM:
+      return true;
+
+    default:
+      return false;
+  }
+}
 ExternalTextureSurfaceVulkan::ExternalTextureSurfaceVulkan(
     FlutterDesktopGpuSurfaceTextureCallback texture_callback,
     void* user_data,
@@ -22,6 +51,60 @@ ExternalTextureSurfaceVulkan::ExternalTextureSurfaceVulkan(
       vulkan_renderer_(vulkan_renderer) {}
 
 ExternalTextureSurfaceVulkan::~ExternalTextureSurfaceVulkan() {}
+
+bool ExternalTextureSurfaceVulkan::BindImageMemory(tbm_surface_h tbm_surface) {
+  uint32_t num_bos =
+      static_cast<uint32_t>(tbm_surface_internal_get_num_bos(tbm_surface));
+  if (num_bos > 1) {
+    if(SupportDisjoint()){
+        return BindImageMemoryMultiBos(tbm_surface);
+    }else{
+      return false;
+    }
+  } else {
+    return BindImageMemoryOneBos(tbm_surface);
+  }
+}
+
+bool ExternalTextureSurfaceVulkan::BindImageMemoryOneBos(
+    tbm_surface_h tbm_surface) {
+  tbm_surface_info_s tbm_surface_info;
+  tbm_surface_get_info(tbm_surface, &tbm_surface_info);
+  return vkBindImageMemory(
+             static_cast<VkDevice>(vulkan_renderer_->GetDeviceHandle()),
+             vk_image_, device_memories_[0], 0) == VK_SUCCESS;
+}
+
+bool ExternalTextureSurfaceVulkan::BindImageMemoryMultiBos(
+    tbm_surface_h tbm_surface) {
+  tbm_surface_info_s tbm_surface_info;
+  tbm_surface_get_info(tbm_surface, &tbm_surface_info);
+  std::vector<VkBindImageMemoryInfo> bind_image_mem_infos(
+      tbm_surface_info.num_planes);
+  std::vector<VkBindImagePlaneMemoryInfo> bind_image_plane_mem_infos(
+      tbm_surface_info.num_planes);
+  const VkImageAspectFlagBits plane_flag_bits[4] = {
+      VK_IMAGE_ASPECT_MEMORY_PLANE_0_BIT_EXT,
+      VK_IMAGE_ASPECT_MEMORY_PLANE_1_BIT_EXT,
+      VK_IMAGE_ASPECT_MEMORY_PLANE_2_BIT_EXT,
+      VK_IMAGE_ASPECT_MEMORY_PLANE_3_BIT_EXT};
+  for (uint32_t i = 0; i < tbm_surface_info.num_planes; ++i) {
+    bind_image_plane_mem_infos[i].sType =
+        VK_STRUCTURE_TYPE_BIND_IMAGE_PLANE_MEMORY_INFO;
+    bind_image_plane_mem_infos[i].pNext = nullptr;
+    bind_image_plane_mem_infos[i].planeAspect = plane_flag_bits[i];
+
+    bind_image_mem_infos[i].sType = VK_STRUCTURE_TYPE_BIND_IMAGE_MEMORY_INFO;
+    bind_image_mem_infos[i].pNext = &bind_image_plane_mem_infos[i];
+    bind_image_mem_infos[i].image = vk_image_;
+    bind_image_mem_infos[i].memory = device_memories_[i];
+    bind_image_mem_infos[i].memoryOffset = tbm_surface_info.planes[i].offset;
+  }
+  return vkBindImageMemory2KHR(
+             static_cast<VkDevice>(vulkan_renderer_->GetDeviceHandle()),
+             tbm_surface_info.num_planes,
+             bind_image_mem_infos.data()) == VK_SUCCESS;
+}
 
 bool ExternalTextureSurfaceVulkan::CreateOrUpdateImage(
     const FlutterDesktopGpuSurfaceDescriptor* descriptor) {
@@ -110,20 +193,28 @@ bool ExternalTextureSurfaceVulkan::CreateImage(
   return true;
 }
 
+bool ExternalTextureSurfaceVulkan::SupportDisjoint() {
+  if (IsMultiPlanarVkFormat(format_)) {
+    VkDrmFormatModifierPropertiesEXT props;
+    if (GetFormatModifierProperties(format_, props) &&
+        props.drmFormatModifierTilingFeatures &
+            VK_FORMAT_FEATURE_DISJOINT_BIT) {
+      return true;
+    }
+  }
+  return false;
+}
+
 bool ExternalTextureSurfaceVulkan::AllocateMemory(tbm_surface_h tbm_surface) {
   int num_bos = tbm_surface_internal_get_num_bos(tbm_surface);
-  VkDeviceSize import_size = 0;
   for (int i = 0; i < num_bos; i++) {
     tbm_bo bo = tbm_surface_internal_get_bo(tbm_surface, i);
-    uint32_t tbm_fd = tbm_bo_get_handle(bo, TBM_DEVICE_3D).u32;
-    int32_t new_fd = dup(static_cast<int32_t>(tbm_fd));
-    import_size = static_cast<VkDeviceSize>(tbm_bo_size(bo));
+    int32_t fd =
+        dup(static_cast<int32_t>(tbm_bo_get_handle(bo, TBM_DEVICE_3D).u32));
+    VkDeviceSize import_size = static_cast<VkDeviceSize>(tbm_bo_size(bo));
     VkDeviceMemory memory = VK_NULL_HANDLE;
-    bool result = AllocateMemory(vk_image_,
-                                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                                     VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                                 new_fd, import_size, memory);
-    if (!result) {
+    if (!AllocateMemory(vk_image_, fd, import_size, memory)) {
+      FT_LOG(Error) << "Fail to allocate memory";
       return false;
     }
     device_memories_.push_back(memory);
@@ -131,12 +222,10 @@ bool ExternalTextureSurfaceVulkan::AllocateMemory(tbm_surface_h tbm_surface) {
   return true;
 }
 
-bool ExternalTextureSurfaceVulkan::AllocateMemory(
-    VkImage image,
-    VkMemoryPropertyFlags memory_properties,
-    int fd,
-    VkDeviceSize import_size,
-    VkDeviceMemory memory) {
+bool ExternalTextureSurfaceVulkan::AllocateMemory(VkImage image,
+                                                  int fd,
+                                                  VkDeviceSize import_size,
+                                                  VkDeviceMemory& memory) {
   VkMemoryRequirements memory_requirements;
   VkMemoryFdPropertiesKHR memory_fd_properties = {};
 
