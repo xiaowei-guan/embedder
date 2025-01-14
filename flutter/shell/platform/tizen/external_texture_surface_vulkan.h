@@ -32,12 +32,12 @@ class ExternalTextureSurfaceVulkan : public ExternalTexture {
 
  private:
   bool BindImageMemory(tbm_surface_h tbm_surface);
-  bool BindImageMemoryMultiBos(tbm_surface_h tbm_surface);
-  bool BindImageMemoryOneBos(tbm_surface_h tbm_surface);
+  bool BindMultiImageMemory(tbm_surface_h tbm_surface);
+  bool BindOneImageMemory(tbm_surface_h tbm_surface);
   bool CreateOrUpdateImage(
       const FlutterDesktopGpuSurfaceDescriptor* descriptor);
-  bool CreateImage(tbm_surface_info_s tbm_surface_info);
-  VkFormat GetFormatFromTBMFormat(tbm_format& format);
+  bool CreateImage(tbm_surface_h tbm_surface);
+  VkFormat ConvertFormat(tbm_format& format);
   bool GetFormatModifierProperties(
       VkFormat format,
       VkDrmFormatModifierPropertiesEXT& properties);
@@ -61,4 +61,4 @@ class ExternalTextureSurfaceVulkan : public ExternalTexture {
 };
 }  // namespace flutter
 
-#endif  // FLUTTER_SHELL_PLATFORM_TIZEN_EXTERNAL_TEXTURE_PIXEL_VULKAN_H_
+#endif  // FLUTTER_SHELL_PLATFORM_TIZEN_EXTERNAL_TEXTURE_SURFACE_VULKAN_H_
