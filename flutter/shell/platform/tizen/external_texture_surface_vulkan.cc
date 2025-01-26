@@ -42,6 +42,7 @@ bool IsMultiPlanarVkFormat(VkFormat format) {
       return false;
   }
 }
+
 ExternalTextureSurfaceVulkan::ExternalTextureSurfaceVulkan(
     FlutterDesktopGpuSurfaceTextureCallback texture_callback,
     void* user_data,
@@ -51,56 +52,14 @@ ExternalTextureSurfaceVulkan::ExternalTextureSurfaceVulkan(
       user_data_(user_data),
       vulkan_renderer_(vulkan_renderer) {}
 
-ExternalTextureSurfaceVulkan::~ExternalTextureSurfaceVulkan() {}
-
-bool ExternalTextureSurfaceVulkan::BindImageMemory(tbm_surface_h tbm_surface) {
-  uint32_t num_bos =
-      static_cast<uint32_t>(tbm_surface_internal_get_num_bos(tbm_surface));
-  if (num_bos > 1) {
-    return BindMultiImageMemory(tbm_surface);
-  } else {
-    return BindOneImageMemory(tbm_surface);
-  }
+ExternalTextureSurfaceVulkan::~ExternalTextureSurfaceVulkan() {
+  ReleaseImage();
 }
 
-bool ExternalTextureSurfaceVulkan::BindOneImageMemory(
-    tbm_surface_h tbm_surface) {
-  tbm_surface_info_s tbm_surface_info;
-  tbm_surface_get_info(tbm_surface, &tbm_surface_info);
+bool ExternalTextureSurfaceVulkan::BindImageMemory() {
   return vkBindImageMemory(
              static_cast<VkDevice>(vulkan_renderer_->GetDeviceHandle()),
-             vk_image_, device_memories_[0], 0) == VK_SUCCESS;
-}
-
-bool ExternalTextureSurfaceVulkan::BindMultiImageMemory(
-    tbm_surface_h tbm_surface) {
-  tbm_surface_info_s tbm_surface_info;
-  tbm_surface_get_info(tbm_surface, &tbm_surface_info);
-  std::vector<VkBindImageMemoryInfo> bind_image_mem_infos(
-      tbm_surface_info.num_planes);
-  std::vector<VkBindImagePlaneMemoryInfo> bind_image_plane_mem_infos(
-      tbm_surface_info.num_planes);
-  const VkImageAspectFlagBits plane_flag_bits[4] = {
-      VK_IMAGE_ASPECT_MEMORY_PLANE_0_BIT_EXT,
-      VK_IMAGE_ASPECT_MEMORY_PLANE_1_BIT_EXT,
-      VK_IMAGE_ASPECT_MEMORY_PLANE_2_BIT_EXT,
-      VK_IMAGE_ASPECT_MEMORY_PLANE_3_BIT_EXT};
-  for (uint32_t i = 0; i < tbm_surface_info.num_planes; ++i) {
-    bind_image_plane_mem_infos[i].sType =
-        VK_STRUCTURE_TYPE_BIND_IMAGE_PLANE_MEMORY_INFO;
-    bind_image_plane_mem_infos[i].pNext = nullptr;
-    bind_image_plane_mem_infos[i].planeAspect = plane_flag_bits[i];
-
-    bind_image_mem_infos[i].sType = VK_STRUCTURE_TYPE_BIND_IMAGE_MEMORY_INFO;
-    bind_image_mem_infos[i].pNext = &bind_image_plane_mem_infos[i];
-    bind_image_mem_infos[i].image = vk_image_;
-    bind_image_mem_infos[i].memory = device_memories_[i];
-    bind_image_mem_infos[i].memoryOffset = tbm_surface_info.planes[i].offset;
-  }
-  return vkBindImageMemory2KHR(
-             static_cast<VkDevice>(vulkan_renderer_->GetDeviceHandle()),
-             tbm_surface_info.num_planes,
-             bind_image_mem_infos.data()) == VK_SUCCESS;
+             vk_image_, device_memorie_, 0) == VK_SUCCESS;
 }
 
 bool ExternalTextureSurfaceVulkan::CreateOrUpdateImage(
@@ -132,7 +91,7 @@ bool ExternalTextureSurfaceVulkan::CreateOrUpdateImage(
       ReleaseImage();
       return false;
     }
-    if (!BindImageMemory(tbm_surface)) {
+    if (!BindImageMemory()) {
       FT_LOG(Error) << "Fail to bind image memory";
       ReleaseImage();
       return false;
@@ -185,10 +144,6 @@ bool ExternalTextureSurfaceVulkan::CreateImage(tbm_surface_h tbm_surface) {
   image_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
   image_create_info.pNext = &external_memory_image_create_info;
   image_create_info.flags = 0;
-  if (SupportDisjoint()) {
-    image_create_info.flags =
-        VK_IMAGE_CREATE_DISJOINT_BIT;  // multi-planar format support
-  }
   image_create_info.imageType = VK_IMAGE_TYPE_2D;
   image_create_info.format = format_;
   image_create_info.extent = {tbm_surface_info.width, tbm_surface_info.height,
@@ -210,33 +165,22 @@ bool ExternalTextureSurfaceVulkan::CreateImage(tbm_surface_h tbm_surface) {
   return true;
 }
 
-bool ExternalTextureSurfaceVulkan::SupportDisjoint() {
-  if (IsMultiPlanarVkFormat(format_)) {
-    VkDrmFormatModifierPropertiesEXT props;
-    if (GetFormatModifierProperties(format_, props) &&
-        props.drmFormatModifierTilingFeatures &
-            VK_FORMAT_FEATURE_DISJOINT_BIT) {
-      return true;
-    }
-  }
-  return false;
-}
-
 bool ExternalTextureSurfaceVulkan::AllocateMemory(tbm_surface_h tbm_surface) {
   int num_bos = tbm_surface_internal_get_num_bos(tbm_surface);
-  for (int i = 0; i < num_bos; i++) {
-    tbm_bo bo = tbm_surface_internal_get_bo(tbm_surface, i);
+  if (num_bos == 1) {
+    tbm_bo bo = tbm_surface_internal_get_bo(tbm_surface, 0);
     int32_t fd =
         dup(static_cast<int32_t>(tbm_bo_get_handle(bo, TBM_DEVICE_3D).u32));
     VkDeviceSize import_size = static_cast<VkDeviceSize>(tbm_bo_size(bo));
-    VkDeviceMemory memory = VK_NULL_HANDLE;
-    if (!AllocateMemory(vk_image_, fd, import_size, memory)) {
+    if (!AllocateMemory(vk_image_, fd, import_size, device_memorie_)) {
       FT_LOG(Error) << "Fail to allocate memory";
       return false;
     }
-    device_memories_.push_back(memory);
+    return true;
+  } else {
+    FT_LOG(Error) << "Not supprot multi-planar format";
+    return false;
   }
-  return true;
 }
 
 bool ExternalTextureSurfaceVulkan::AllocateMemory(VkImage image,
@@ -290,12 +234,11 @@ void ExternalTextureSurfaceVulkan::ReleaseImage() {
                    vk_image_, nullptr);
     vk_image_ = VK_NULL_HANDLE;
   }
-
-  for (size_t i = 0; i < device_memories_.size(); i++) {
+  if (device_memorie_ != VK_NULL_HANDLE) {
     vkFreeMemory(static_cast<VkDevice>(vulkan_renderer_->GetDeviceHandle()),
-                 device_memories_[i], nullptr);
+                 device_memorie_, nullptr);
+    device_memorie_ = VK_NULL_HANDLE;
   }
-  device_memories_.clear();
 }
 
 bool ExternalTextureSurfaceVulkan::PopulateTexture(size_t width,
@@ -321,10 +264,30 @@ bool ExternalTextureSurfaceVulkan::PopulateTexture(size_t width,
       static_cast<FlutterVulkanTexture*>(flutter_texture);
   vulkan_texture->image = reinterpret_cast<uint64_t>(vk_image_);
   vulkan_texture->format = format_;
+  vulkan_texture->image_memory = reinterpret_cast<uint64_t>(device_memorie_);
+  vulkan_texture->alloc_size = GetAllocSize();
+  vulkan_texture->format_features = GetFormatFeaturesProperties();
   vulkan_texture->width = width;
   vulkan_texture->height = height;
   return true;
 }
+
+uint64_t ExternalTextureSurfaceVulkan::GetAllocSize(){
+  VkMemoryRequirements memory_requirements;
+  vkGetImageMemoryRequirements(
+      static_cast<VkDevice>(vulkan_renderer_->GetDeviceHandle()), vk_image_,
+      &memory_requirements);
+  return memory_requirements.size;
+}
+
+uint32_t ExternalTextureSurfaceVulkan::GetFormatFeaturesProperties(){
+  VkFormatProperties formatProperties;
+  vkGetPhysicalDeviceFormatProperties(static_cast<VkPhysicalDevice>(
+          vulkan_renderer_->GetPhysicalDeviceHandle()), format_, &formatProperties);
+  return formatProperties.linearTilingFeatures;
+}
+
+
 
 bool ExternalTextureSurfaceVulkan::FindMemoryType(
     uint32_t type_filter,
