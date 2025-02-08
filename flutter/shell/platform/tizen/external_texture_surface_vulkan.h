@@ -56,7 +56,7 @@ class ExternalTextureSurfaceVulkan : public ExternalTexture {
   void* last_surface_handle_ = nullptr;
   VkFormat format_ = VK_FORMAT_UNDEFINED;
   VkImage vk_image_ = VK_NULL_HANDLE;
-  VkDeviceMemory device_memorie_;
+  VkDeviceMemory device_memorie_ = VK_NULL_HANDLE;
 };
 }  // namespace flutter
 

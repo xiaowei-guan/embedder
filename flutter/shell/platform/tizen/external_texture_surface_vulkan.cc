@@ -50,13 +50,32 @@ ExternalTextureSurfaceVulkan::ExternalTextureSurfaceVulkan(
     : ExternalTexture(),
       texture_callback_(texture_callback),
       user_data_(user_data),
-      vulkan_renderer_(vulkan_renderer) {}
+      vulkan_renderer_(vulkan_renderer) {
+  FT_LOG(Error) << "ExternalTextureSurfaceVulkan created!";
+}
 
 ExternalTextureSurfaceVulkan::~ExternalTextureSurfaceVulkan() {
+  FT_LOG(Error) << "ExternalTextureSurfaceVulkan destroyed!";
   ReleaseImage();
 }
 
+VkResult GetMemoryFdPropertiesKHR(
+    VkInstance instance,
+    VkDevice device,
+    VkExternalMemoryHandleTypeFlagBits handleType,
+    int fd,
+    VkMemoryFdPropertiesKHR* pMemoryFdProperties) {
+  auto func = (PFN_vkGetMemoryFdPropertiesKHR)vkGetInstanceProcAddr(
+      instance, "vkGetMemoryFdPropertiesKHR");
+  if (func != nullptr) {
+    return func(device, handleType, fd, pMemoryFdProperties);
+  } else {
+    return VK_ERROR_EXTENSION_NOT_PRESENT;
+  }
+}
+
 bool ExternalTextureSurfaceVulkan::BindImageMemory() {
+  FT_LOG(Error) << "BindImageMemory!";
   return vkBindImageMemory(
              static_cast<VkDevice>(vulkan_renderer_->GetDeviceHandle()),
              vk_image_, device_memorie_, 0) == VK_SUCCESS;
@@ -64,13 +83,17 @@ bool ExternalTextureSurfaceVulkan::BindImageMemory() {
 
 bool ExternalTextureSurfaceVulkan::CreateOrUpdateImage(
     const FlutterDesktopGpuSurfaceDescriptor* descriptor) {
+  FT_LOG(Error) << "CreateOrUpdateImage===================11";
   if (descriptor == nullptr || descriptor->handle == nullptr) {
     ReleaseImage();
     return false;
   }
+  FT_LOG(Error) << "CreateOrUpdateImage===================22";
   void* handle = descriptor->handle;
   if (handle != last_surface_handle_) {
+    FT_LOG(Error) << "CreateOrUpdateImage===================2222";
     ReleaseImage();
+    FT_LOG(Error) << "CreateOrUpdateImage===================33";
     const tbm_surface_h tbm_surface =
         reinterpret_cast<tbm_surface_h>(descriptor->handle);
     tbm_surface_info_s tbm_surface_info;
@@ -81,11 +104,13 @@ bool ExternalTextureSurfaceVulkan::CreateOrUpdateImage(
       }
       return false;
     }
+    FT_LOG(Error) << "CreateOrUpdateImage===================44";
     if (!CreateImage(tbm_surface)) {
       FT_LOG(Error) << "Fail to create image";
       ReleaseImage();
       return false;
     }
+    FT_LOG(Error) << "CreateOrUpdateImage===================55";
     if (!AllocateMemory(tbm_surface)) {
       FT_LOG(Error) << "Fail to allocate memory";
       ReleaseImage();
@@ -105,9 +130,11 @@ bool ExternalTextureSurfaceVulkan::CreateOrUpdateImage(
 }
 
 bool ExternalTextureSurfaceVulkan::CreateImage(tbm_surface_h tbm_surface) {
+  FT_LOG(Error) << "CreateImage!";
   tbm_surface_info_s tbm_surface_info;
   tbm_surface_get_info(tbm_surface, &tbm_surface_info);
   format_ = ConvertFormat(tbm_surface_info.format);
+  FT_LOG(Error) << "format_ : " << format_;
   VkDrmFormatModifierPropertiesEXT drm_format_modifier;
   if (!GetFormatModifierProperties(format_, drm_format_modifier)) {
     FT_LOG(Info) << "Fail to get format modifier";
@@ -166,6 +193,7 @@ bool ExternalTextureSurfaceVulkan::CreateImage(tbm_surface_h tbm_surface) {
 }
 
 bool ExternalTextureSurfaceVulkan::AllocateMemory(tbm_surface_h tbm_surface) {
+  FT_LOG(Error) << "AllocateMemory!";
   int num_bos = tbm_surface_internal_get_num_bos(tbm_surface);
   if (num_bos == 1) {
     tbm_bo bo = tbm_surface_internal_get_bo(tbm_surface, 0);
@@ -187,10 +215,12 @@ bool ExternalTextureSurfaceVulkan::AllocateMemory(VkImage image,
                                                   int fd,
                                                   VkDeviceSize import_size,
                                                   VkDeviceMemory& memory) {
+  FT_LOG(Error) << "AllocateMemory!";
   VkMemoryRequirements memory_requirements;
   VkMemoryFdPropertiesKHR memory_fd_properties = {};
 
-  if (vkGetMemoryFdPropertiesKHR(
+  if (GetMemoryFdPropertiesKHR(
+          static_cast<VkInstance>(vulkan_renderer_->GetInstanceHandle()),
           static_cast<VkDevice>(vulkan_renderer_->GetDeviceHandle()),
           VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT, fd,
           &memory_fd_properties) != VK_SUCCESS) {
@@ -229,6 +259,7 @@ bool ExternalTextureSurfaceVulkan::AllocateMemory(VkImage image,
 }
 
 void ExternalTextureSurfaceVulkan::ReleaseImage() {
+  FT_LOG(Error) << "ReleaseImage!";
   if (vk_image_ != VK_NULL_HANDLE) {
     vkDestroyImage(static_cast<VkDevice>(vulkan_renderer_->GetDeviceHandle()),
                    vk_image_, nullptr);
@@ -244,6 +275,7 @@ void ExternalTextureSurfaceVulkan::ReleaseImage() {
 bool ExternalTextureSurfaceVulkan::PopulateTexture(size_t width,
                                                    size_t height,
                                                    void* flutter_texture) {
+  FT_LOG(Error) << "PopulateTexture!";
   if (!texture_callback_) {
     return false;
   }
@@ -272,7 +304,7 @@ bool ExternalTextureSurfaceVulkan::PopulateTexture(size_t width,
   return true;
 }
 
-uint64_t ExternalTextureSurfaceVulkan::GetAllocSize(){
+uint64_t ExternalTextureSurfaceVulkan::GetAllocSize() {
   VkMemoryRequirements memory_requirements;
   vkGetImageMemoryRequirements(
       static_cast<VkDevice>(vulkan_renderer_->GetDeviceHandle()), vk_image_,
@@ -280,14 +312,14 @@ uint64_t ExternalTextureSurfaceVulkan::GetAllocSize(){
   return memory_requirements.size;
 }
 
-uint32_t ExternalTextureSurfaceVulkan::GetFormatFeaturesProperties(){
+uint32_t ExternalTextureSurfaceVulkan::GetFormatFeaturesProperties() {
   VkFormatProperties formatProperties;
-  vkGetPhysicalDeviceFormatProperties(static_cast<VkPhysicalDevice>(
-          vulkan_renderer_->GetPhysicalDeviceHandle()), format_, &formatProperties);
+  vkGetPhysicalDeviceFormatProperties(
+      static_cast<VkPhysicalDevice>(
+          vulkan_renderer_->GetPhysicalDeviceHandle()),
+      format_, &formatProperties);
   return formatProperties.linearTilingFeatures;
 }
-
-
 
 bool ExternalTextureSurfaceVulkan::FindMemoryType(
     uint32_t type_filter,
@@ -340,14 +372,13 @@ bool ExternalTextureSurfaceVulkan::GetFormatModifierProperties(
       VK_STRUCTURE_TYPE_DRM_FORMAT_MODIFIER_PROPERTIES_LIST_EXT;
   format_modifyer_properties_list.drmFormatModifierCount = 0;
 
-  VkFormatProperties2KHR format_properties_2khr = {};
-  format_properties_2khr.sType = VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_2_KHR;
-  format_properties_2khr.pNext = &format_modifyer_properties_list;
-
-  vkGetPhysicalDeviceFormatProperties2KHR(
+  VkFormatProperties2 format_properties_2 = {};
+  format_properties_2.sType = VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_2;
+  format_properties_2.pNext = &format_modifyer_properties_list;
+  vkGetPhysicalDeviceFormatProperties2(
       static_cast<VkPhysicalDevice>(
           vulkan_renderer_->GetPhysicalDeviceHandle()),
-      format, &format_properties_2khr);
+      format, &format_properties_2);
   if (format_modifyer_properties_list.drmFormatModifierCount <= 0) {
     FT_LOG(Error) << "Could not get drmFormatModifierCount";
     return false;
@@ -356,10 +387,10 @@ bool ExternalTextureSurfaceVulkan::GetFormatModifierProperties(
       format_modifyer_properties_list.drmFormatModifierCount);
   format_modifyer_properties_list.pDrmFormatModifierProperties =
       properties_list.data();
-  vkGetPhysicalDeviceFormatProperties2KHR(
+  vkGetPhysicalDeviceFormatProperties2(
       static_cast<VkPhysicalDevice>(
           vulkan_renderer_->GetPhysicalDeviceHandle()),
-      format, &format_properties_2khr);
+      format, &format_properties_2);
   for (VkDrmFormatModifierPropertiesEXT& prop : properties_list) {
     if (prop.drmFormatModifier == DRM_FORMAT_MOD_LINEAR) {
       properties = prop;
