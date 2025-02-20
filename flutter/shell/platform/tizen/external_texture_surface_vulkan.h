@@ -31,7 +31,6 @@ class ExternalTextureSurfaceVulkan : public ExternalTexture {
                        void* flutter_texture) override;
 
  private:
-  bool BindImageMemory();
   bool CreateOrUpdateImage(
       const FlutterDesktopGpuSurfaceDescriptor* descriptor);
   bool CreateImage(tbm_surface_h tbm_surface);
@@ -39,24 +38,26 @@ class ExternalTextureSurfaceVulkan : public ExternalTexture {
   bool GetFormatModifierProperties(
       VkFormat format,
       VkDrmFormatModifierPropertiesEXT& properties);
-  bool FindMemoryType(uint32_t typeFilter,
-                      VkMemoryPropertyFlags properties,
+  bool FindProperties(uint32_t memory_type_bits_requirement,
+                      VkMemoryPropertyFlags required_properties,
                       uint32_t& index_out);
   uint64_t GetAllocSize();
   uint32_t GetFormatFeaturesProperties();
   void ReleaseImage();
   bool AllocateMemory(tbm_surface_h tbm_surface);
-  bool AllocateMemory(VkImage image,
-                      int fd,
-                      VkDeviceSize import_size,
-                      VkDeviceMemory& memory);
+  bool AllocateOneBufferMemory(tbm_surface_h tbm_surface);
+  bool AllocateMultiBufferMemory(tbm_surface_h tbm_surface);
+  bool BindImageMemory(tbm_surface_h tbm_surface);
+  bool BindOneBufferImageMemory(tbm_surface_h tbm_surface);
+  bool BindMultiBufferImageMemory(tbm_surface_h tbm_surface);
+  bool IsSupportDisjoint(tbm_surface_h tbm_surface);
   FlutterDesktopGpuSurfaceTextureCallback texture_callback_ = nullptr;
   void* user_data_ = nullptr;
   TizenRendererVulkan* vulkan_renderer_ = nullptr;
   void* last_surface_handle_ = nullptr;
-  VkFormat format_ = VK_FORMAT_UNDEFINED;
+  VkFormat vk_format_ = VK_FORMAT_UNDEFINED;
   VkImage vk_image_ = VK_NULL_HANDLE;
-  VkDeviceMemory device_memorie_ = VK_NULL_HANDLE;
+  VkDeviceMemory vk_device_memorie_ = VK_NULL_HANDLE;
 };
 }  // namespace flutter
 
