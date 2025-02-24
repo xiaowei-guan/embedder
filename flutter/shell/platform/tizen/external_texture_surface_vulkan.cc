@@ -84,9 +84,7 @@ bool ExternalTextureSurfaceVulkan::CreateOrUpdateImage(
   FT_LOG(Error) << "CreateOrUpdateImage===================22";
   void* handle = descriptor->handle;
   if (handle != last_surface_handle_) {
-    FT_LOG(Error) << "CreateOrUpdateImage===================2222";
     ReleaseImage();
-    FT_LOG(Error) << "CreateOrUpdateImage===================33";
     const tbm_surface_h tbm_surface =
         reinterpret_cast<tbm_surface_h>(descriptor->handle);
     tbm_surface_info_s tbm_surface_info;
@@ -109,11 +107,13 @@ bool ExternalTextureSurfaceVulkan::CreateOrUpdateImage(
       ReleaseImage();
       return false;
     }
+    FT_LOG(Error) << "CreateOrUpdateImage===================66";
     if (!BindImageMemory(tbm_surface)) {
       FT_LOG(Error) << "Fail to bind image memory";
       ReleaseImage();
       return false;
     }
+    FT_LOG(Error) << "CreateOrUpdateImage===================77";
     last_surface_handle_ = handle;
   }
   if (descriptor->release_callback) {
@@ -163,7 +163,9 @@ bool ExternalTextureSurfaceVulkan::CreateImage(tbm_surface_h tbm_surface) {
   VkImageCreateInfo image_create_info = {};
   image_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
   image_create_info.pNext = &external_memory_image_create_info;
-  image_create_info.flags = 0;
+  if (IsSupportDisjoint(tbm_surface)) {
+    image_create_info.flags = VK_IMAGE_CREATE_DISJOINT_BIT;
+  }
   image_create_info.imageType = VK_IMAGE_TYPE_2D;
   image_create_info.format = vk_format_;
   image_create_info.extent = {tbm_surface_info.width, tbm_surface_info.height,
@@ -171,11 +173,11 @@ bool ExternalTextureSurfaceVulkan::CreateImage(tbm_surface_h tbm_surface) {
   image_create_info.mipLevels = 1;
   image_create_info.arrayLayers = 1;
   image_create_info.samples = VK_SAMPLE_COUNT_1_BIT;
-  image_create_info.tiling = VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT;
-  image_create_info.usage = VK_IMAGE_USAGE_SAMPLED_BIT;
+  image_create_info.tiling = VK_IMAGE_TILING_LINEAR;
+  image_create_info.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
+                            VK_IMAGE_USAGE_TRANSFER_DST_BIT |
+                            VK_IMAGE_USAGE_SAMPLED_BIT;
   image_create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-  image_create_info.queueFamilyIndexCount = 0;
-  image_create_info.pQueueFamilyIndices = nullptr;
   image_create_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
   if (vkCreateImage(static_cast<VkDevice>(vulkan_renderer_->GetDeviceHandle()),
                     &image_create_info, nullptr, &vk_image_) != VK_SUCCESS) {
@@ -243,7 +245,7 @@ bool ExternalTextureSurfaceVulkan::AllocateOneBufferMemory(
 
 bool ExternalTextureSurfaceVulkan::AllocateMultiBufferMemory(
     tbm_surface_h tbm_surface) {
-  FT_LOG(Error) << "AllocateMultiBufferMemory!";
+  FT_LOG(Error) << "AllocateMultiBufferMemory001";
   int num_bos = tbm_surface_internal_get_num_bos(tbm_surface);
   std::vector<VkImageAspectFlagBits> aspect_flags{VK_IMAGE_ASPECT_PLANE_0_BIT,
                                                   VK_IMAGE_ASPECT_PLANE_1_BIT,
@@ -251,30 +253,10 @@ bool ExternalTextureSurfaceVulkan::AllocateMultiBufferMemory(
   VkDeviceSize image_size = 0;
   uint32_t image_bits = 0;
   for (int i = 0; i < num_bos; i++) {
-    VkImagePlaneMemoryRequirementsInfo image_plane_memory_info = {};
-    image_plane_memory_info.sType =
-        VK_STRUCTURE_TYPE_IMAGE_PLANE_MEMORY_REQUIREMENTS_INFO;
-    image_plane_memory_info.pNext = nullptr;
-    image_plane_memory_info.planeAspect = aspect_flags[i];
-
-    VkImageMemoryRequirementsInfo2 image_memory_info2 = {};
-    image_memory_info2.sType =
-        VK_STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2;
-    image_memory_info2.pNext = &image_plane_memory_info;
-    image_memory_info2.image = vk_image_;
-
-    VkMemoryDedicatedRequirements dedicated_requirements = {};
-    dedicated_requirements.sType =
-        VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS;
-
-    VkMemoryRequirements2 memory_requirements2 = {};
-    memory_requirements2.sType = VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2;
-    memory_requirements2.pNext = &dedicated_requirements;
-
-    vkGetImageMemoryRequirements2(
-        static_cast<VkDevice>(vulkan_renderer_->GetDeviceHandle()),
-        &image_memory_info2, &memory_requirements2);
+    VkMemoryRequirements2 memory_requirements2 =
+        GetImageMemoryRequirements(aspect_flags[i]);
     image_size += memory_requirements2.memoryRequirements.size;
+    FT_LOG(Error) << "AllocateMultiBufferMemory:: image_size : " << image_size;
     image_bits |= memory_requirements2.memoryRequirements.memoryTypeBits;
   }
 
@@ -285,13 +267,47 @@ bool ExternalTextureSurfaceVulkan::AllocateMultiBufferMemory(
     return false;
   }
 
+  FT_LOG(Error) << "AllocateMultiBufferMemory:: image_size : " << image_size;
+
   VkMemoryAllocateInfo allocate_info = {};
   allocate_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
   allocate_info.allocationSize = image_size;
   allocate_info.memoryTypeIndex = memory_type_index;
-  return vkAllocateMemory(
+  FT_LOG(Error) << "AllocateMultiBufferMemory002";
+  if(vkAllocateMemory(
              static_cast<VkDevice>(vulkan_renderer_->GetDeviceHandle()),
-             &allocate_info, NULL, &vk_device_memorie_) == VK_SUCCESS;
+             &allocate_info, NULL, &vk_device_memorie_) != VK_SUCCESS){
+              FT_LOG(Error) << "Fail to allocate memory"; 
+              return false;     
+  }
+  return true;
+}
+
+VkMemoryRequirements2 ExternalTextureSurfaceVulkan::GetImageMemoryRequirements(
+    VkImageAspectFlagBits aspect_flag) {
+  VkImagePlaneMemoryRequirementsInfo image_plane_memory_info = {};
+  image_plane_memory_info.sType =
+      VK_STRUCTURE_TYPE_IMAGE_PLANE_MEMORY_REQUIREMENTS_INFO;
+  image_plane_memory_info.pNext = nullptr;
+  image_plane_memory_info.planeAspect = aspect_flag;
+
+  VkImageMemoryRequirementsInfo2 image_memory_info2 = {};
+  image_memory_info2.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2;
+  image_memory_info2.pNext = &image_plane_memory_info;
+  image_memory_info2.image = vk_image_;
+
+  VkMemoryDedicatedRequirements dedicated_requirements = {};
+  dedicated_requirements.sType =
+      VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS;
+
+  VkMemoryRequirements2 memory_requirements2 = {};
+  memory_requirements2.sType = VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2;
+  memory_requirements2.pNext = &dedicated_requirements;
+
+  vkGetImageMemoryRequirements2(
+      static_cast<VkDevice>(vulkan_renderer_->GetDeviceHandle()),
+      &image_memory_info2, &memory_requirements2);
+  return memory_requirements2;
 }
 
 bool ExternalTextureSurfaceVulkan::BindImageMemory(tbm_surface_h tbm_surface) {
@@ -329,6 +345,9 @@ bool ExternalTextureSurfaceVulkan::BindMultiBufferImageMemory(
     bind_image_memory_plane_info.pNext = &bind_image_plane_info;
     bind_image_memory_plane_info.image = vk_image_;
     bind_image_memory_plane_info.memory = vk_device_memorie_;
+    VkMemoryRequirements2 memory_requirements2 =
+        GetImageMemoryRequirements(aspect_flags[i]);
+    memory_offset_plane += memory_requirements2.memoryRequirements.size;
     bind_image_memory_plane_info.memoryOffset = memory_offset_plane;
   }
   return vkBindImageMemory2(
@@ -390,7 +409,7 @@ bool ExternalTextureSurfaceVulkan::PopulateTexture(size_t width,
   vulkan_texture->image = reinterpret_cast<uint64_t>(vk_image_);
   vulkan_texture->format = vk_format_;
   vulkan_texture->image_memory = reinterpret_cast<uint64_t>(vk_device_memorie_);
-  vulkan_texture->alloc_size = GetAllocSize();
+  vulkan_texture->alloc_size = GetAllocSize() * 2;
   vulkan_texture->format_features = GetFormatFeaturesProperties();
   vulkan_texture->width = width;
   vulkan_texture->height = height;
@@ -402,6 +421,7 @@ uint64_t ExternalTextureSurfaceVulkan::GetAllocSize() {
   vkGetImageMemoryRequirements(
       static_cast<VkDevice>(vulkan_renderer_->GetDeviceHandle()), vk_image_,
       &memory_requirements);
+  FT_LOG(Error) << "GetAllocSize : " << memory_requirements.size;
   return memory_requirements.size;
 }
 
