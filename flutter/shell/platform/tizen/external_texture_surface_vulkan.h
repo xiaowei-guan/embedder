@@ -43,6 +43,8 @@ class ExternalTextureSurfaceVulkan : public ExternalTexture {
                       uint32_t& index_out);
   uint64_t GetAllocSize();
   uint32_t GetFormatFeaturesProperties();
+  VkMemoryRequirements2 GetImageMemoryRequirements(
+      VkImageAspectFlagBits aspect_flag);
   void ReleaseImage();
   bool AllocateMemory(tbm_surface_h tbm_surface);
   bool AllocateOneBufferMemory(tbm_surface_h tbm_surface);
