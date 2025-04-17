@@ -142,7 +142,11 @@ void TizenWindowEcoreWl2::SetWindowOptions() {
   ecore_wl2_indicator_visible_type_set(ecore_wl2_window_,
                                        ECORE_WL2_INDICATOR_VISIBLE_TYPE_SHOWN);
 
+#ifdef TV_PROFILE
+  int rotations[1] = {0};  // Default is only landscape.
+#else
   int rotations[4] = {0, 90, 180, 270};
+#endif
   ecore_wl2_window_available_rotations_set(ecore_wl2_window_, rotations,
                                            sizeof(rotations) / sizeof(int));
 
@@ -225,6 +229,7 @@ void TizenWindowEcoreWl2::RegisterEventHandlers() {
             int32_t degree = rotation_event->angle;
             self->view_delegate_->OnRotate(degree);
             TizenGeometry geometry = self->GetGeometry();
+            ecore_wl2_window_rotation_set(self->ecore_wl2_window_, degree);
             ecore_wl2_window_rotation_change_done_send(
                 self->ecore_wl2_window_, rotation_event->rotation,
                 geometry.width, geometry.height);
