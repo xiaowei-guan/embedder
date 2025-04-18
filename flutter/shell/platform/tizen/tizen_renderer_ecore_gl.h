@@ -16,7 +16,7 @@ namespace flutter {
 
 class TizenRendererEcoreGL : public TizenRendererGL {
  public:
-  explicit TizenRendererEcoreGL(TizenViewBase* view);
+  explicit TizenRendererEcoreGL(TizenViewBase* view, bool enable_impeller);
 
   virtual ~TizenRendererEcoreGL();
 
@@ -56,6 +56,7 @@ class TizenRendererEcoreGL : public TizenRendererGL {
   EGLSurface egl_resource_surface_ = EGL_NO_SURFACE;
 
   std::string egl_extension_str_;
+  bool enable_impeller_;
 };
 
 }  // namespace flutter

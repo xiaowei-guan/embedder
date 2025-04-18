@@ -94,7 +94,8 @@ void FlutterTizenEngine::CreateRenderer(
         },
         renderer_.get());
   } else if (renderer_type == FlutterDesktopRendererType::kEGL) {
-    renderer_ = std::make_unique<TizenRendererEcoreGL>(view_->tizen_view());
+    renderer_ = std::make_unique<TizenRendererEcoreGL>(
+        view_->tizen_view(), project_->HasArgument("--enable-impeller"));
   } else {
     renderer_ = std::make_unique<TizenRendererVulkan>(view_->tizen_view());
   }
@@ -245,7 +246,8 @@ bool FlutterTizenEngine::RunEngine() {
       internal_plugin_registrar_->messenger());
 
   if (IsHeaded()) {
-    texture_registrar_ = std::make_unique<FlutterTizenTextureRegistrar>(this);
+    texture_registrar_ = std::make_unique<FlutterTizenTextureRegistrar>(
+        this, project_->HasArgument("--enable-impeller"));
     keyboard_channel_ = std::make_unique<KeyboardChannel>(
         internal_plugin_registrar_->messenger(),
         [this](const FlutterKeyEvent& event, FlutterKeyEventCallback callback,
