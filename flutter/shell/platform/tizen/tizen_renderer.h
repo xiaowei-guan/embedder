@@ -6,14 +6,15 @@
 #define EMBEDDER_TIZEN_RENDERER_H_
 
 #include <cstdint>
+#include "flutter/shell/platform/tizen/tizen_view_base.h"
 
 namespace flutter {
 
 class TizenRenderer {
  public:
-  TizenRenderer();
+  TizenRenderer() = default;
 
-  virtual ~TizenRenderer();
+  virtual ~TizenRenderer() = default;
 
   virtual bool CreateSurface(void* render_target,
                              void* render_target_display,
@@ -24,24 +25,11 @@ class TizenRenderer {
 
   bool IsValid() { return is_valid_; }
 
-  virtual bool OnMakeCurrent() = 0;
-
-  virtual bool OnClearCurrent() = 0;
-
-  virtual bool OnMakeResourceCurrent() = 0;
-
-  virtual bool OnPresent() = 0;
-
-  virtual uint32_t OnGetFBO() = 0;
-
-  virtual void* OnProcResolver(const char* name) = 0;
-
-  virtual bool IsSupportedExtension(const char* name) = 0;
-
   virtual void ResizeSurface(int32_t width, int32_t height) = 0;
 
  protected:
   bool is_valid_ = false;
+  bool Create(TizenViewBase* view);
 };
 
 }  // namespace flutter
