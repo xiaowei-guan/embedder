@@ -6,6 +6,7 @@
 #include "flutter_tizen_view.h"
 
 #include "flutter/shell/platform/tizen/logger.h"
+#include "flutter/shell/platform/tizen/system_utils.h"
 #include "flutter/shell/platform/tizen/tizen_view.h"
 #ifdef NUI_SUPPORT
 #include "flutter/shell/platform/tizen/tizen_view_nui.h"
@@ -14,14 +15,6 @@
 #include "flutter/shell/platform/tizen/tizen_window.h"
 
 namespace {
-
-#if defined(MOBILE_PROFILE)
-constexpr double kProfileFactor = 0.7;
-#elif defined(TV_PROFILE)
-constexpr double kProfileFactor = 2.0;
-#else
-constexpr double kProfileFactor = 1.0;
-#endif
 
 constexpr char kSysMenuKey[] = "XF86SysMenu";
 constexpr char kBackKey[] = "XF86Back";
@@ -45,26 +38,16 @@ const std::vector<std::string> kBindableSystemKeys = {
 // (ui/events/x/events_x_utils.cc).
 constexpr int32_t kScrollOffsetMultiplier = 53;
 
-double ComputePixelRatio(flutter::TizenViewBase* view) {
-  // The scale factor is computed based on the display DPI and the current
-  // profile. A fixed DPI value (72) is used on TVs. See:
-  // https://docs.tizen.org/application/native/guides/ui/efl/multiple-screens
-#ifdef TV_PROFILE
-  double dpi = 72.0;
-#else
-  double dpi = static_cast<double>(view->GetDpi());
-#endif
-  double scale_factor = dpi / 90.0 * kProfileFactor;
-  return std::max(scale_factor, 1.0);
-}
-
 }  // namespace
 
 namespace flutter {
 
 FlutterTizenView::FlutterTizenView(FlutterViewId view_id,
-                                   std::unique_ptr<TizenViewBase> tizen_view)
-    : view_id_(view_id), tizen_view_(std::move(tizen_view)) {
+                                   std::unique_ptr<TizenViewBase> tizen_view,
+                                   double user_pixel_ratio)
+    : view_id_(view_id),
+      tizen_view_(std::move(tizen_view)),
+      user_pixel_ratio_(user_pixel_ratio) {
   tizen_view_->SetView(this);
 
   if (auto* window = dynamic_cast<TizenWindow*>(tizen_view_.get())) {
@@ -98,7 +81,12 @@ void FlutterTizenView::SetEngine(std::unique_ptr<FlutterTizenEngine> engine) {
   platform_channel_ =
       std::make_unique<PlatformChannel>(messenger, tizen_view_.get());
 
-  double pixel_ratio = ComputePixelRatio(tizen_view_.get());
+  double pixel_ratio;
+  if (user_pixel_ratio_ == 0.0) {
+    pixel_ratio = ComputePixelRatio(tizen_view_->GetDpi());
+  } else {
+    pixel_ratio = user_pixel_ratio_;
+  }
   platform_view_channel_ =
       std::make_unique<PlatformViewChannel>(messenger, pixel_ratio);
   mouse_cursor_channel_ =
@@ -219,7 +207,8 @@ void FlutterTizenView::OnRotate(int32_t degree) {
 
   engine_->renderer()->ResizeSurface(width, height);
 
-  // Window position does not change on rotation regardless of its orientation.
+  // Window position does not change on rotation regardless of its
+  // orientation.
   SendWindowMetrics(geometry.left, geometry.top, width, height, 0.0);
 }
 
@@ -397,7 +386,11 @@ void FlutterTizenView::SendWindowMetrics(int32_t left,
                                          int32_t height,
                                          double pixel_ratio) {
   if (pixel_ratio == 0.0) {
-    pixel_ratio = ComputePixelRatio(tizen_view_.get());
+    if (user_pixel_ratio_ == 0.0) {
+      pixel_ratio = ComputePixelRatio(tizen_view_->GetDpi());
+    } else {
+      pixel_ratio = user_pixel_ratio_;
+    }
   }
 
   engine_->SendWindowMetrics(left, top, width, height, pixel_ratio);
@@ -424,8 +417,8 @@ void FlutterTizenView::SendFlutterPointerEvent(FlutterPointerPhase phase,
     new_y = geometry.width - x;
   }
 
-  // If the pointer isn't already added, synthesize an add to satisfy Flutter's
-  // expectations about events.
+  // If the pointer isn't already added, synthesize an add to satisfy
+  // Flutter's expectations about events.
   if (!state->flutter_state_is_added) {
     FlutterPointerEvent event = {};
     event.struct_size = sizeof(event);

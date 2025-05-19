@@ -209,11 +209,13 @@ FlutterDesktopViewRef FlutterDesktopViewCreateFromNewWindow(
   } else {
     window = std::make_unique<flutter::TizenWindowEcoreWl2>(
         window_geometry, window_properties.transparent,
-        window_properties.focusable, window_properties.top_level);
+        window_properties.focusable, window_properties.top_level,
+        window_properties.window_handle);
   }
 
   auto view = std::make_unique<flutter::FlutterTizenView>(
-      flutter::kImplicitViewId, std::move(window));
+      flutter::kImplicitViewId, std::move(window),
+      window_properties.user_pixel_ratio);
 
   // Take ownership of the engine, starting it if necessary.
   view->SetEngine(
