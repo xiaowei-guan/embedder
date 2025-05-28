@@ -23,7 +23,8 @@ class TizenWindowEcoreWl2 : public TizenWindow {
                       bool transparent,
                       bool focusable,
                       bool top_level,
-                      void* window_handle);
+                      void* window_handle,
+                      bool is_vulkan);
 
   ~TizenWindowEcoreWl2();
 
@@ -33,7 +34,7 @@ class TizenWindowEcoreWl2 : public TizenWindow {
 
   TizenGeometry GetScreenGeometry() override;
 
-  void* GetRenderTarget() override { return ecore_wl2_egl_window_; }
+  void* GetRenderTarget() override;
 
   void* GetRenderTargetDisplay() override { return wl2_display_; }
 
@@ -76,7 +77,9 @@ class TizenWindowEcoreWl2 : public TizenWindow {
   Ecore_Wl2_Window* ecore_wl2_window_ = nullptr;
 
   Ecore_Wl2_Egl_Window* ecore_wl2_egl_window_ = nullptr;
+  bool is_vulkan_ = false;
   wl_display* wl2_display_ = nullptr;
+  wl_surface* wl2_surface_ = nullptr;
   std::vector<Ecore_Event_Handler*> ecore_event_handlers_;
 
   tizen_policy* tizen_policy_ = nullptr;
