@@ -14,7 +14,9 @@
 #include "flutter/shell/platform/tizen/external_texture_surface_egl_impeller.h"
 #include "flutter/shell/platform/tizen/external_texture_surface_evas_gl.h"
 #include "flutter/shell/platform/tizen/flutter_tizen_engine.h"
+#include "flutter/shell/platform/tizen/flutter_tizen_view.h"
 #include "flutter/shell/platform/tizen/logger.h"
+#include "flutter/shell/platform/tizen/tizen_renderer.h"
 #include "flutter/shell/platform/tizen/tizen_renderer_evas_gl.h"
 
 namespace flutter {
@@ -123,12 +125,15 @@ FlutterTizenTextureRegistrar::CreateExternalTexture(
     case kFlutterDesktopGpuSurfaceTexture:
       ExternalTextureExtensionType gl_extension =
           ExternalTextureExtensionType::kNone;
-      if (engine_->renderer() && engine_->renderer()->IsSupportedExtension(
-                                     "EGL_TIZEN_image_native_surface")) {
+      if (engine_->renderer() &&
+          dynamic_cast<TizenRendererGL*>(engine_->renderer()) &&
+          dynamic_cast<TizenRendererGL*>(engine_->renderer())
+              ->IsSupportedExtension("EGL_TIZEN_image_native_surface")) {
         gl_extension = ExternalTextureExtensionType::kNativeSurface;
       } else if (engine_->renderer() &&
-                 engine_->renderer()->IsSupportedExtension(
-                     "EGL_EXT_image_dma_buf_import")) {
+                 dynamic_cast<TizenRendererGL*>(engine_->renderer()) &&
+                 dynamic_cast<TizenRendererGL*>(engine_->renderer())
+                     ->IsSupportedExtension("EGL_EXT_image_dma_buf_import")) {
         gl_extension = ExternalTextureExtensionType::kDmaBuffer;
       }
       if (renderer_type == FlutterDesktopRendererType::kEvasGL) {
