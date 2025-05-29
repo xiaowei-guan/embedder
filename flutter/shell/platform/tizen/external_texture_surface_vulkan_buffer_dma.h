@@ -28,15 +28,11 @@ class ExternalTextureSurfaceVulkanBufferDma
   VkDeviceMemory GetMemory() override;
 
  private:
-  bool GetFormatModifierProperties(
-      VkFormat format,
-      VkDrmFormatModifierPropertiesEXT& properties);
-  VkMemoryRequirements2 GetImageMemoryRequirements(
-      VkImageAspectFlagBits aspect_flag);
+  bool GetFdMemoryTypeIndex(int fd, uint32_t& index_out);
   TizenRendererVulkan* vulkan_renderer_ = nullptr;
-  VkFormat vk_format_ = VK_FORMAT_UNDEFINED;
-  VkImage vk_image_ = VK_NULL_HANDLE;
-  VkDeviceMemory vk_device_memory_ = VK_NULL_HANDLE;
+  VkFormat texture_format_ = VK_FORMAT_UNDEFINED;
+  VkImage texture_image_ = VK_NULL_HANDLE;
+  VkDeviceMemory texture_device_memory_ = VK_NULL_HANDLE;
 };
 }  // namespace flutter
 
