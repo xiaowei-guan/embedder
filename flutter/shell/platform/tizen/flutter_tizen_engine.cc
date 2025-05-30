@@ -16,8 +16,12 @@
 #include "flutter/shell/platform/tizen/logger.h"
 #include "flutter/shell/platform/tizen/system_utils.h"
 #include "flutter/shell/platform/tizen/tizen_input_method_context.h"
-#include "flutter/shell/platform/tizen/tizen_renderer_egl.h"
+#ifdef NUI_SUPPORT
+#include "flutter/shell/platform/tizen/tizen_view_nui.h"
+#endif
+#include "flutter/shell/platform/tizen/tizen_renderer_ecore_gl.h"
 #include "flutter/shell/platform/tizen/tizen_renderer_evas_gl.h"
+#include "flutter/shell/platform/tizen/tizen_renderer_vulkan.h"
 
 namespace flutter {
 
@@ -82,8 +86,7 @@ FlutterTizenEngine::~FlutterTizenEngine() {
 void FlutterTizenEngine::CreateRenderer(
     FlutterDesktopRendererType renderer_type) {
   if (renderer_type == FlutterDesktopRendererType::kEvasGL) {
-    renderer_ = std::make_unique<TizenRendererEvasGL>();
-
+    renderer_ = std::make_unique<TizenRendererEvasGL>(view_->tizen_view());
     render_loop_ = std::make_unique<TizenRenderEventLoop>(
         std::this_thread::get_id(),  // main thread
         embedder_api_.GetCurrentTime,
@@ -93,9 +96,11 @@ void FlutterTizenEngine::CreateRenderer(
           }
         },
         renderer_.get());
+  } else if (renderer_type == FlutterDesktopRendererType::kEGL) {
+    renderer_ = std::make_unique<TizenRendererEcoreGL>(
+        view_->tizen_view(), project_->HasArgument("--enable-impeller"));
   } else {
-    renderer_ = std::make_unique<TizenRendererEgl>(
-        project_->HasArgument("--enable-impeller"));
+    renderer_ = std::make_unique<TizenRendererVulkan>(view_->tizen_view());
   }
 }
 
@@ -211,7 +216,7 @@ bool FlutterTizenEngine::RunEngine() {
     engine->OnUpdateSemantics(update);
   };
 
-  if (IsHeaded() && dynamic_cast<TizenRendererEgl*>(renderer_.get())) {
+  if (IsHeaded() && dynamic_cast<TizenRendererEcoreGL*>(renderer_.get())) {
     vsync_waiter_ = std::make_unique<TizenVsyncWaiter>(this);
     args.vsync_callback = [](void* user_data, intptr_t baton) -> void {
       auto* engine = static_cast<FlutterTizenEngine*>(user_data);
@@ -231,7 +236,6 @@ bool FlutterTizenEngine::RunEngine() {
                   << result;
     return false;
   }
-
   internal_plugin_registrar_ =
       std::make_unique<PluginRegistrar>(plugin_registrar_.get());
   accessibility_channel_ = std::make_unique<AccessibilityChannel>(
@@ -242,7 +246,6 @@ bool FlutterTizenEngine::RunEngine() {
       internal_plugin_registrar_->messenger());
   settings_channel_ = std::make_unique<SettingsChannel>(
       internal_plugin_registrar_->messenger());
-
   if (IsHeaded()) {
     texture_registrar_ = std::make_unique<FlutterTizenTextureRegistrar>(
         this, project_->HasArgument("--enable-impeller"));
@@ -259,7 +262,6 @@ bool FlutterTizenEngine::RunEngine() {
   display_monitor_->UpdateDisplays();
 
   SetupLocales();
-
   return true;
 }
 
@@ -294,8 +296,10 @@ bool FlutterTizenEngine::StopEngine() {
   return false;
 }
 
-void FlutterTizenEngine::SetView(FlutterTizenView* view) {
+void FlutterTizenEngine::SetView(FlutterTizenView* view,
+                                 FlutterDesktopRendererType renderer_type) {
   view_ = view;
+  CreateRenderer(renderer_type);
 }
 
 void FlutterTizenEngine::AddPluginRegistrarDestructionCallback(
@@ -437,75 +441,167 @@ FlutterDesktopMessage FlutterTizenEngine::ConvertToDesktopMessage(
 FlutterRendererConfig FlutterTizenEngine::GetRendererConfig() {
   FlutterRendererConfig config = {};
   if (IsHeaded()) {
-    config.type = kOpenGL;
-    config.open_gl.struct_size = sizeof(config.open_gl);
-    config.open_gl.make_current = [](void* user_data) -> bool {
-      auto* engine = static_cast<FlutterTizenEngine*>(user_data);
-      if (!engine->view()) {
-        return false;
-      }
-      return engine->view()->OnMakeCurrent();
-    };
-    config.open_gl.make_resource_current = [](void* user_data) -> bool {
-      auto* engine = static_cast<FlutterTizenEngine*>(user_data);
-      if (!engine->view()) {
-        return false;
-      }
-      return engine->view()->OnMakeResourceCurrent();
-    };
-    config.open_gl.clear_current = [](void* user_data) -> bool {
-      auto* engine = static_cast<FlutterTizenEngine*>(user_data);
-      if (!engine->view()) {
-        return false;
-      }
-      return engine->view()->OnClearCurrent();
-    };
-    config.open_gl.present = [](void* user_data) -> bool {
-      auto* engine = static_cast<FlutterTizenEngine*>(user_data);
-      if (!engine->view()) {
-        return false;
-      }
-      return engine->view()->OnPresent();
-    };
-    config.open_gl.fbo_callback = [](void* user_data) -> uint32_t {
-      auto* engine = static_cast<FlutterTizenEngine*>(user_data);
-      if (!engine->view()) {
-        return false;
-      }
-      return engine->view()->OnGetFBO();
-    };
-    config.open_gl.surface_transformation =
-        [](void* user_data) -> FlutterTransformation {
-      auto* engine = static_cast<FlutterTizenEngine*>(user_data);
-      if (!engine->view()) {
-        return FlutterTransformation();
-      }
-      return engine->view()->GetFlutterTransformation();
-    };
-    config.open_gl.gl_proc_resolver = [](void* user_data,
-                                         const char* name) -> void* {
-      auto* engine = static_cast<FlutterTizenEngine*>(user_data);
-      if (!engine->view()) {
-        return nullptr;
-      }
-      return engine->view()->OnProcResolver(name);
-    };
-    config.open_gl.gl_external_texture_frame_callback =
-        [](void* user_data, int64_t texture_id, size_t width, size_t height,
-           FlutterOpenGLTexture* texture) -> bool {
-      auto* engine = static_cast<FlutterTizenEngine*>(user_data);
-      if (!engine->texture_registrar()) {
-        return false;
-      }
-      return engine->texture_registrar()->PopulateTexture(texture_id, width,
-                                                          height, texture);
-    };
-  } else {
-    config.type = kSoftware;
-    config.software.struct_size = sizeof(config.software);
-    config.software.surface_present_callback =
-        [](void* user_data, const void* allocation, size_t row_bytes,
-           size_t height) -> bool { return true; };
+    if (dynamic_cast<TizenRendererGL*>(renderer())) {
+      config.type = kOpenGL;
+      config.open_gl.struct_size = sizeof(config.open_gl);
+      config.open_gl.make_current = [](void* user_data) -> bool {
+        auto* engine = static_cast<FlutterTizenEngine*>(user_data);
+        if (!engine->view() ||
+            !dynamic_cast<TizenRendererGL*>(engine->renderer())) {
+          return false;
+        }
+
+        return dynamic_cast<TizenRendererGL*>(engine->renderer())
+            ->OnMakeCurrent();
+      };
+      config.open_gl.make_resource_current = [](void* user_data) -> bool {
+        auto* engine = static_cast<FlutterTizenEngine*>(user_data);
+        if (!engine->view() ||
+            !dynamic_cast<TizenRendererGL*>(engine->renderer())) {
+          return false;
+        }
+        return dynamic_cast<TizenRendererGL*>(engine->renderer())
+            ->OnMakeResourceCurrent();
+      };
+      config.open_gl.clear_current = [](void* user_data) -> bool {
+        auto* engine = static_cast<FlutterTizenEngine*>(user_data);
+        if (!engine->view() ||
+            !dynamic_cast<TizenRendererGL*>(engine->renderer())) {
+          return false;
+        }
+        return dynamic_cast<TizenRendererGL*>(engine->renderer())
+            ->OnClearCurrent();
+      };
+      config.open_gl.present = [](void* user_data) -> bool {
+        auto* engine = static_cast<FlutterTizenEngine*>(user_data);
+        if (!engine->view() ||
+            !dynamic_cast<TizenRendererGL*>(engine->renderer())) {
+          return false;
+        }
+        bool result =
+            dynamic_cast<TizenRendererGL*>(engine->renderer())->OnPresent();
+#ifdef NUI_SUPPORT
+        if (auto* nui_view = dynamic_cast<flutter::TizenViewNui*>(
+                engine->view()->tizen_view())) {
+          nui_view->RequestRendering();
+        }
+#endif
+        return result;
+      };
+      config.open_gl.fbo_callback = [](void* user_data) -> uint32_t {
+        auto* engine = static_cast<FlutterTizenEngine*>(user_data);
+        if (!engine->view() ||
+            !dynamic_cast<TizenRendererGL*>(engine->renderer())) {
+          return false;
+        }
+        return dynamic_cast<TizenRendererGL*>(engine->renderer())->OnGetFBO();
+      };
+      config.open_gl.surface_transformation =
+          [](void* user_data) -> FlutterTransformation {
+        auto* engine = static_cast<FlutterTizenEngine*>(user_data);
+        if (!engine->view()) {
+          return FlutterTransformation();
+        }
+        return engine->view()->GetFlutterTransformation();
+      };
+      config.open_gl.gl_proc_resolver = [](void* user_data,
+                                           const char* name) -> void* {
+        auto* engine = static_cast<FlutterTizenEngine*>(user_data);
+        if (!engine->view() ||
+            !dynamic_cast<TizenRendererGL*>(engine->renderer())) {
+          return nullptr;
+        }
+        return dynamic_cast<TizenRendererGL*>(engine->renderer())
+            ->OnProcResolver(name);
+      };
+      config.open_gl.gl_external_texture_frame_callback =
+          [](void* user_data, int64_t texture_id, size_t width, size_t height,
+             FlutterOpenGLTexture* texture) -> bool {
+        auto* engine = static_cast<FlutterTizenEngine*>(user_data);
+        if (!engine->texture_registrar()) {
+          return false;
+        }
+        return engine->texture_registrar()->PopulateTexture(texture_id, width,
+                                                            height, texture);
+      };
+    } else if (dynamic_cast<TizenRendererVulkan*>(renderer())) {
+      config.type = kVulkan;
+      config.vulkan.struct_size = sizeof(config.vulkan);
+      config.vulkan.version =
+          dynamic_cast<TizenRendererVulkan*>(renderer())->GetVersion();
+      config.vulkan.instance =
+          dynamic_cast<TizenRendererVulkan*>(renderer())->GetInstanceHandle();
+      config.vulkan.physical_device =
+          dynamic_cast<TizenRendererVulkan*>(renderer())
+              ->GetPhysicalDeviceHandle();
+      config.vulkan.device =
+          dynamic_cast<TizenRendererVulkan*>(renderer())->GetDeviceHandle();
+      config.vulkan.queue =
+          dynamic_cast<TizenRendererVulkan*>(renderer())->GetQueueHandle();
+      config.vulkan.queue_family_index =
+          dynamic_cast<TizenRendererVulkan*>(renderer())->GetQueueIndex();
+      config.vulkan.enabled_instance_extension_count =
+          dynamic_cast<TizenRendererVulkan*>(renderer())
+              ->GetEnabledInstanceExtensionCount();
+      config.vulkan.enabled_instance_extensions =
+          dynamic_cast<TizenRendererVulkan*>(renderer())
+              ->GetEnabledInstanceExtensions();
+      config.vulkan.enabled_device_extension_count =
+          dynamic_cast<TizenRendererVulkan*>(renderer())
+              ->GetEnabledDeviceExtensionCount();
+      config.vulkan.enabled_device_extensions =
+          dynamic_cast<TizenRendererVulkan*>(renderer())
+              ->GetEnabledDeviceExtensions();
+      config.vulkan.get_instance_proc_address_callback =
+          [](void* user_data, FlutterVulkanInstanceHandle instance,
+             const char* name) -> void* {
+        auto* engine = reinterpret_cast<FlutterTizenEngine*>(user_data);
+        if (!engine->view() ||
+            !dynamic_cast<TizenRendererVulkan*>(engine->renderer())) {
+          return nullptr;
+        }
+        return dynamic_cast<TizenRendererVulkan*>(engine->renderer())
+            ->GetInstanceProcAddress(instance, name);
+      };
+      config.vulkan.get_next_image_callback =
+          [](void* user_data,
+             const FlutterFrameInfo* frame) -> FlutterVulkanImage {
+        auto* engine = reinterpret_cast<FlutterTizenEngine*>(user_data);
+        if (!engine->view() ||
+            !dynamic_cast<TizenRendererVulkan*>(engine->renderer())) {
+          return FlutterVulkanImage();
+        }
+        return dynamic_cast<TizenRendererVulkan*>(engine->renderer())
+            ->GetNextImage(frame);
+      };
+      config.vulkan.present_image_callback =
+          [](void* user_data, const FlutterVulkanImage* image) -> bool {
+        auto* engine = reinterpret_cast<FlutterTizenEngine*>(user_data);
+        if (!engine->view() ||
+            !dynamic_cast<TizenRendererVulkan*>(engine->renderer())) {
+          return false;
+        }
+
+        return dynamic_cast<TizenRendererVulkan*>(engine->renderer())
+            ->Present(image);
+      };
+      config.vulkan.external_texture_frame_callback =
+          [](void* user_data, int64_t texture_id, size_t width, size_t height,
+             FlutterVulkanTexture* texture) -> bool {
+        auto* engine = static_cast<FlutterTizenEngine*>(user_data);
+        if (!engine->texture_registrar()) {
+          return false;
+        }
+        return engine->texture_registrar()->PopulateTexture(texture_id, width,
+                                                            height, texture);
+      };
+    } else {
+      config.type = kSoftware;
+      config.software.struct_size = sizeof(config.software);
+      config.software.surface_present_callback =
+          [](void* user_data, const void* allocation, size_t row_bytes,
+             size_t height) -> bool { return true; };
+    }
   }
   return config;
 }

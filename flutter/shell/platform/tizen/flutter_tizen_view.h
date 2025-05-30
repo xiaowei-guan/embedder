@@ -36,31 +36,14 @@ class FlutterTizenView : public TizenViewEventHandlerDelegate {
 
   // Configures the window instance with an instance of a running Flutter
   // engine.
-  void SetEngine(std::unique_ptr<FlutterTizenEngine> engine);
+  void SetEngine(std::unique_ptr<FlutterTizenEngine> engine,
+                 FlutterDesktopRendererType renderer_type);
 
   FlutterTizenEngine* engine() { return engine_.get(); }
 
   TizenViewBase* tizen_view() { return tizen_view_.get(); }
 
-  // Creates rendering surface for Flutter engine to draw into.
-  // Should be called before calling FlutterEngineRun using this view.
-  void CreateRenderSurface(FlutterDesktopRendererType renderer_type);
-
-  // Destroys current rendering surface if one has been allocated.
-  void DestroyRenderSurface();
-
   void Resize(int32_t width, int32_t height);
-
-  // Callbacks for clearing context, settings context and swapping buffers,
-  // these are typically called on an engine-controlled (non-platform) thread.
-  bool OnMakeCurrent();
-  bool OnClearCurrent();
-  bool OnMakeResourceCurrent();
-  bool OnPresent();
-
-  uint32_t OnGetFBO();
-
-  void* OnProcResolver(const char* name);
 
   void OnResize(int32_t left,
                 int32_t top,

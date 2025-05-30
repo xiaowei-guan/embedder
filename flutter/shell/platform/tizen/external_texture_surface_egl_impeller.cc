@@ -30,18 +30,18 @@ ExternalTextureSurfaceEGLImpeller::ExternalTextureSurfaceEGLImpeller(
     ExternalTextureExtensionType gl_extension,
     FlutterDesktopGpuSurfaceTextureCallback texture_callback,
     void* user_data)
-    : ExternalTexture(gl_extension),
+    : ExternalTexture(),
       texture_callback_(texture_callback),
-      user_data_(user_data) {}
+      user_data_(user_data),
+      state_(std::make_unique<ExternalTextureGLState>()) {}
 
 ExternalTextureSurfaceEGLImpeller::~ExternalTextureSurfaceEGLImpeller() {
   ReleaseImage();
 }
 
-bool ExternalTextureSurfaceEGLImpeller::PopulateTexture(
-    size_t width,
-    size_t height,
-    FlutterOpenGLTexture* opengl_texture) {
+bool ExternalTextureSurfaceEGLImpeller::PopulateTexture(size_t width,
+                                                        size_t height,
+                                                        void* flutter_texture) {
   if (!texture_callback_) {
     return false;
   }
@@ -57,7 +57,8 @@ bool ExternalTextureSurfaceEGLImpeller::PopulateTexture(
                  << texture_id_;
     return false;
   }
-
+  FlutterOpenGLTexture* opengl_texture =
+      static_cast<FlutterOpenGLTexture*>(flutter_texture);
   opengl_texture->bind_callback = OnBindCallback;
   opengl_texture->destruction_callback = nullptr;
   opengl_texture->user_data = this;

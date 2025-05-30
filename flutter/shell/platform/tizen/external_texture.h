@@ -24,12 +24,7 @@ static std::atomic<int64_t> next_texture_id = {1};
 
 class ExternalTexture {
  public:
-  ExternalTexture(ExternalTextureExtensionType gl_extension =
-                      ExternalTextureExtensionType::kNone)
-      : state_(std::make_unique<ExternalTextureGLState>()),
-        texture_id_(next_texture_id++) {
-    state_->gl_extension = gl_extension;
-  }
+  ExternalTexture() : texture_id_(next_texture_id++) {}
 
   virtual ~ExternalTexture() = default;
 
@@ -38,10 +33,9 @@ class ExternalTexture {
 
   virtual bool PopulateTexture(size_t width,
                                size_t height,
-                               FlutterOpenGLTexture* opengl_texture) = 0;
+                               void* flutter_texture) = 0;
 
  protected:
-  std::unique_ptr<ExternalTextureGLState> state_;
   const int64_t texture_id_ = 0;
 };
 

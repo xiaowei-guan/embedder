@@ -2,22 +2,23 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef EMBEDDER_TIZEN_RENDERER_EGL_H_
-#define EMBEDDER_TIZEN_RENDERER_EGL_H_
+#ifndef EMBEDDER_TIZEN_RENDERER_ECORE_GL_H_
+#define EMBEDDER_TIZEN_RENDERER_ECORE_GL_H_
 
 #include <EGL/egl.h>
 
 #include <string>
 
-#include "flutter/shell/platform/tizen/tizen_renderer.h"
+#include "flutter/shell/platform/tizen/tizen_renderer_gl.h"
+#include "flutter/shell/platform/tizen/tizen_view_base.h"
 
 namespace flutter {
 
-class TizenRendererEgl : public TizenRenderer {
+class TizenRendererEcoreGL : public TizenRendererGL {
  public:
-  explicit TizenRendererEgl(bool enable_impeller);
+  explicit TizenRendererEcoreGL(TizenViewBase* view, bool enable_impeller);
 
-  virtual ~TizenRendererEgl();
+  virtual ~TizenRendererEcoreGL();
 
   bool CreateSurface(void* render_target,
                      void* render_target_display,
@@ -60,4 +61,4 @@ class TizenRendererEgl : public TizenRenderer {
 
 }  // namespace flutter
 
-#endif  // EMBEDDER_TIZEN_RENDERER_EGL_H_
+#endif  // EMBEDDER_TIZEN_RENDERER_ECORE_GL_H_

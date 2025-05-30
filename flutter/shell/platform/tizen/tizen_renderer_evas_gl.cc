@@ -2,8 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "tizen_renderer_evas_gl.h"
-
+#include "flutter/shell/platform/tizen/tizen_renderer_evas_gl.h"
 #include "flutter/shell/platform/tizen/logger.h"
 #include "flutter/shell/platform/tizen/tizen_evas_gl_helper.h"
 
@@ -14,7 +13,9 @@ EVAS_GL_GLOBAL_GLES2_DEFINE();
 
 namespace flutter {
 
-TizenRendererEvasGL::TizenRendererEvasGL() {}
+TizenRendererEvasGL::TizenRendererEvasGL(TizenViewBase* view) {
+  TizenRenderer::CreateSurface(view);
+}
 
 TizenRendererEvasGL::~TizenRendererEvasGL() {
   DestroySurface();

@@ -45,7 +45,7 @@ class FlutterTizenTextureRegistrar {
   bool PopulateTexture(int64_t texture_id,
                        size_t width,
                        size_t height,
-                       FlutterOpenGLTexture* texture);
+                       void* texture);
 
   std::unique_ptr<ExternalTexture> CreateExternalTexture(
       const FlutterDesktopTextureInfo* info,

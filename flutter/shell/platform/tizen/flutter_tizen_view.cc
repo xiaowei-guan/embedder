@@ -11,7 +11,10 @@
 #ifdef NUI_SUPPORT
 #include "flutter/shell/platform/tizen/tizen_view_nui.h"
 #endif
-#include "flutter/shell/platform/tizen/tizen_renderer_egl.h"
+#include "flutter/shell/platform/tizen/tizen_renderer_ecore_gl.h"
+#include "flutter/shell/platform/tizen/tizen_renderer_evas_gl.h"
+#include "flutter/shell/platform/tizen/tizen_renderer_gl.h"
+#include "flutter/shell/platform/tizen/tizen_renderer_vulkan.h"
 #include "flutter/shell/platform/tizen/tizen_window.h"
 
 namespace {
@@ -62,12 +65,12 @@ FlutterTizenView::~FlutterTizenView() {
     }
     engine_->StopEngine();
   }
-  DestroyRenderSurface();
 }
 
-void FlutterTizenView::SetEngine(std::unique_ptr<FlutterTizenEngine> engine) {
+void FlutterTizenView::SetEngine(std::unique_ptr<FlutterTizenEngine> engine,
+                                 FlutterDesktopRendererType renderer_type) {
   engine_ = std::move(engine);
-  engine_->SetView(this);
+  engine_->SetView(this, renderer_type);
 
   internal_plugin_registrar_ =
       std::make_unique<PluginRegistrar>(engine_->plugin_registrar());
@@ -98,69 +101,11 @@ void FlutterTizenView::SetEngine(std::unique_ptr<FlutterTizenEngine> engine) {
   input_device_channel_ = std::make_unique<InputDeviceChannel>(messenger);
 }
 
-void FlutterTizenView::CreateRenderSurface(
-    FlutterDesktopRendererType renderer_type) {
-  if (engine_) {
-    engine_->CreateRenderer(renderer_type);
-  }
-
-  if (engine_ && engine_->renderer()) {
-    TizenGeometry geometry = tizen_view_->GetGeometry();
-    if (dynamic_cast<TizenWindow*>(tizen_view_.get())) {
-      auto* window = dynamic_cast<TizenWindow*>(tizen_view_.get());
-      engine_->renderer()->CreateSurface(window->GetRenderTarget(),
-                                         window->GetRenderTargetDisplay(),
-                                         geometry.width, geometry.height);
-    } else {
-      auto* tizen_view = dynamic_cast<TizenView*>(tizen_view_.get());
-      engine_->renderer()->CreateSurface(tizen_view->GetRenderTarget(), nullptr,
-                                         geometry.width, geometry.height);
-    }
-  }
-}
-
-void FlutterTizenView::DestroyRenderSurface() {
-  if (engine_ && engine_->renderer()) {
-    engine_->renderer()->DestroySurface();
-  }
-}
-
 void FlutterTizenView::Resize(int32_t width, int32_t height) {
   TizenGeometry geometry = tizen_view_->GetGeometry();
   geometry.width = width;
   geometry.height = height;
   tizen_view_->SetGeometry(geometry);
-}
-
-bool FlutterTizenView::OnMakeCurrent() {
-  return engine_->renderer()->OnMakeCurrent();
-}
-
-bool FlutterTizenView::OnClearCurrent() {
-  return engine_->renderer()->OnClearCurrent();
-}
-
-bool FlutterTizenView::OnMakeResourceCurrent() {
-  return engine_->renderer()->OnMakeResourceCurrent();
-}
-
-bool FlutterTizenView::OnPresent() {
-  bool result = engine_->renderer()->OnPresent();
-#ifdef NUI_SUPPORT
-  if (auto* nui_view =
-          dynamic_cast<flutter::TizenViewNui*>(tizen_view_.get())) {
-    nui_view->RequestRendering();
-  }
-#endif
-  return result;
-}
-
-uint32_t FlutterTizenView::OnGetFBO() {
-  return engine_->renderer()->OnGetFBO();
-}
-
-void* FlutterTizenView::OnProcResolver(const char* name) {
-  return engine_->renderer()->OnProcResolver(name);
 }
 
 void FlutterTizenView::OnResize(int32_t left,
@@ -172,7 +117,6 @@ void FlutterTizenView::OnResize(int32_t left,
   }
 
   engine_->renderer()->ResizeSurface(width, height);
-
   SendWindowMetrics(left, top, width, height, 0.0);
 }
 
@@ -180,7 +124,7 @@ void FlutterTizenView::OnRotate(int32_t degree) {
   TizenGeometry geometry = tizen_view_->GetGeometry();
   int32_t width = geometry.width;
   int32_t height = geometry.height;
-  if (dynamic_cast<TizenRendererEgl*>(engine_->renderer())) {
+  if (dynamic_cast<TizenRendererEcoreGL*>(engine_->renderer())) {
     rotation_degree_ = degree;
     // Compute renderer transformation based on the angle of rotation.
     double rad = (360 - rotation_degree_) * M_PI / 180;

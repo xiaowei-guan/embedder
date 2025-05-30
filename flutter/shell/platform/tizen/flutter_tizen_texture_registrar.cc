@@ -10,12 +10,17 @@
 #include "flutter/shell/platform/tizen/external_texture_pixel_egl.h"
 #include "flutter/shell/platform/tizen/external_texture_pixel_egl_impeller.h"
 #include "flutter/shell/platform/tizen/external_texture_pixel_evas_gl.h"
+#include "flutter/shell/platform/tizen/external_texture_pixel_vulkan.h"
 #include "flutter/shell/platform/tizen/external_texture_surface_egl.h"
 #include "flutter/shell/platform/tizen/external_texture_surface_egl_impeller.h"
 #include "flutter/shell/platform/tizen/external_texture_surface_evas_gl.h"
+#include "flutter/shell/platform/tizen/external_texture_surface_vulkan.h"
 #include "flutter/shell/platform/tizen/flutter_tizen_engine.h"
+#include "flutter/shell/platform/tizen/flutter_tizen_view.h"
 #include "flutter/shell/platform/tizen/logger.h"
+#include "flutter/shell/platform/tizen/tizen_renderer.h"
 #include "flutter/shell/platform/tizen/tizen_renderer_evas_gl.h"
+#include "flutter/shell/platform/tizen/tizen_renderer_vulkan.h"
 
 namespace flutter {
 
@@ -48,6 +53,9 @@ int64_t FlutterTizenTextureRegistrar::RegisterTexture(
   FlutterDesktopRendererType renderer_type = FlutterDesktopRendererType::kEGL;
   if (dynamic_cast<TizenRendererEvasGL*>(engine_->renderer())) {
     renderer_type = FlutterDesktopRendererType::kEvasGL;
+  }
+  if (dynamic_cast<TizenRendererVulkan*>(engine_->renderer())) {
+    renderer_type = FlutterDesktopRendererType::kEVulkan;
   }
   std::unique_ptr<ExternalTexture> texture_gl =
       CreateExternalTexture(texture_info, renderer_type);
@@ -83,11 +91,10 @@ bool FlutterTizenTextureRegistrar::MarkTextureFrameAvailable(
   return engine_->MarkExternalTextureFrameAvailable(texture_id);
 }
 
-bool FlutterTizenTextureRegistrar::PopulateTexture(
-    int64_t texture_id,
-    size_t width,
-    size_t height,
-    FlutterOpenGLTexture* opengl_texture) {
+bool FlutterTizenTextureRegistrar::PopulateTexture(int64_t texture_id,
+                                                   size_t width,
+                                                   size_t height,
+                                                   void* opengl_texture) {
   ExternalTexture* texture;
   {
     std::lock_guard<std::mutex> lock(map_mutex_);
@@ -111,6 +118,12 @@ FlutterTizenTextureRegistrar::CreateExternalTexture(
             texture_info->pixel_buffer_config.callback,
             texture_info->pixel_buffer_config.user_data);
       }
+      if (renderer_type == FlutterDesktopRendererType::kEVulkan) {
+        return std::make_unique<ExternalTexturePixelVulkan>(
+            texture_info->pixel_buffer_config.callback,
+            texture_info->pixel_buffer_config.user_data,
+            dynamic_cast<TizenRendererVulkan*>(engine_->renderer()));
+      }
       if (enable_impeller_) {
         return std::make_unique<ExternalTexturePixelEGLImpeller>(
             texture_info->pixel_buffer_config.callback,
@@ -121,29 +134,41 @@ FlutterTizenTextureRegistrar::CreateExternalTexture(
             texture_info->pixel_buffer_config.user_data);
       }
     case kFlutterDesktopGpuSurfaceTexture:
-      ExternalTextureExtensionType gl_extension =
-          ExternalTextureExtensionType::kNone;
-      if (engine_->renderer() && engine_->renderer()->IsSupportedExtension(
-                                     "EGL_TIZEN_image_native_surface")) {
-        gl_extension = ExternalTextureExtensionType::kNativeSurface;
-      } else if (engine_->renderer() &&
-                 engine_->renderer()->IsSupportedExtension(
-                     "EGL_EXT_image_dma_buf_import")) {
-        gl_extension = ExternalTextureExtensionType::kDmaBuffer;
-      }
-      if (renderer_type == FlutterDesktopRendererType::kEvasGL) {
-        return std::make_unique<ExternalTextureSurfaceEvasGL>(
-            gl_extension, texture_info->gpu_surface_config.callback,
-            texture_info->gpu_surface_config.user_data);
-      }
-      if (enable_impeller_) {
-        return std::make_unique<ExternalTextureSurfaceEGLImpeller>(
-            gl_extension, texture_info->gpu_surface_config.callback,
-            texture_info->gpu_surface_config.user_data);
+      if (renderer_type == FlutterDesktopRendererType::kEGL ||
+          renderer_type == FlutterDesktopRendererType::kEvasGL) {
+        ExternalTextureExtensionType gl_extension =
+            ExternalTextureExtensionType::kNone;
+        if (engine_->renderer() &&
+            dynamic_cast<TizenRendererGL*>(engine_->renderer()) &&
+            dynamic_cast<TizenRendererGL*>(engine_->renderer())
+                ->IsSupportedExtension("EGL_TIZEN_image_native_surface")) {
+          gl_extension = ExternalTextureExtensionType::kNativeSurface;
+        } else if (engine_->renderer() &&
+                   dynamic_cast<TizenRendererGL*>(engine_->renderer()) &&
+                   dynamic_cast<TizenRendererGL*>(engine_->renderer())
+                       ->IsSupportedExtension("EGL_EXT_image_dma_buf_import")) {
+          gl_extension = ExternalTextureExtensionType::kDmaBuffer;
+        }
+        if (renderer_type == FlutterDesktopRendererType::kEvasGL) {
+          return std::make_unique<ExternalTextureSurfaceEvasGL>(
+              gl_extension, texture_info->gpu_surface_config.callback,
+              texture_info->gpu_surface_config.user_data);
+        }
+
+        if (enable_impeller_) {
+          return std::make_unique<ExternalTextureSurfaceEGLImpeller>(
+              gl_extension, texture_info->gpu_surface_config.callback,
+              texture_info->gpu_surface_config.user_data);
+        } else {
+          return std::make_unique<ExternalTextureSurfaceEGL>(
+              gl_extension, texture_info->gpu_surface_config.callback,
+              texture_info->gpu_surface_config.user_data);
+        }
       } else {
-        return std::make_unique<ExternalTextureSurfaceEGL>(
-            gl_extension, texture_info->gpu_surface_config.callback,
-            texture_info->gpu_surface_config.user_data);
+        return std::make_unique<ExternalTextureSurfaceVulkan>(
+            texture_info->gpu_surface_config.callback,
+            texture_info->gpu_surface_config.user_data,
+            dynamic_cast<TizenRendererVulkan*>(engine_->renderer()));
       }
   }
 }

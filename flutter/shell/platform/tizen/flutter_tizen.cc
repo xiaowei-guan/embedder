@@ -16,7 +16,7 @@
 #include "flutter/shell/platform/tizen/public/flutter_platform_view.h"
 #include "flutter/shell/platform/tizen/tizen_view.h"
 #ifdef NUI_SUPPORT
-#include "flutter/shell/platform/tizen/tizen_renderer_egl.h"
+#include "flutter/shell/platform/tizen/tizen_renderer_ecore_gl.h"
 #include "flutter/shell/platform/tizen/tizen_view_nui.h"
 #endif
 #include "flutter/shell/platform/tizen/tizen_window.h"
@@ -210,7 +210,9 @@ FlutterDesktopViewRef FlutterDesktopViewCreateFromNewWindow(
     window = std::make_unique<flutter::TizenWindowEcoreWl2>(
         window_geometry, window_properties.transparent,
         window_properties.focusable, window_properties.top_level,
-        window_properties.window_handle);
+        window_properties.window_handle,
+        window_properties.renderer_type ==
+            FlutterDesktopRendererType::kEVulkan);
   }
 
   auto view = std::make_unique<flutter::FlutterTizenView>(
@@ -219,8 +221,8 @@ FlutterDesktopViewRef FlutterDesktopViewCreateFromNewWindow(
 
   // Take ownership of the engine, starting it if necessary.
   view->SetEngine(
-      std::unique_ptr<flutter::FlutterTizenEngine>(EngineFromHandle(engine)));
-  view->CreateRenderSurface(window_properties.renderer_type);
+      std::unique_ptr<flutter::FlutterTizenEngine>(EngineFromHandle(engine)),
+      FlutterDesktopRendererType::kEVulkan);
   if (!view->engine()->IsRunning()) {
     if (!view->engine()->RunEngine()) {
       return nullptr;

@@ -44,8 +44,8 @@ FlutterDesktopViewRef FlutterDesktopViewCreateFromImageView(
 
   // Take ownership of the engine, starting it if necessary.
   view->SetEngine(
-      std::unique_ptr<flutter::FlutterTizenEngine>(EngineFromHandle(engine)));
-  view->CreateRenderSurface(FlutterDesktopRendererType::kEGL);
+      std::unique_ptr<flutter::FlutterTizenEngine>(EngineFromHandle(engine)),
+      FlutterDesktopRendererType::kEGL);
   if (!view->engine()->IsRunning()) {
     if (!view->engine()->RunEngine()) {
       return nullptr;
