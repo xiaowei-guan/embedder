@@ -55,7 +55,8 @@ TizenWindowEcoreWl2::TizenWindowEcoreWl2(TizenGeometry geometry,
                                          bool top_level,
                                          void* window_handle = nullptr,
                                          bool is_vulkan = false)
-    : TizenWindow(geometry, transparent, focusable, top_level) {
+    : TizenWindow(geometry, transparent, focusable, top_level),
+    is_vulkan_(is_vulkan) {
   if (!CreateWindow(window_handle)) {
     FT_LOG(Error) << "Failed to create a platform window.";
     return;
