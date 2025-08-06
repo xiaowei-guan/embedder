@@ -24,11 +24,9 @@ ExternalTextureSurfaceVulkanBufferMap::
 
 bool ExternalTextureSurfaceVulkanBufferMap::CreateImage(
     tbm_surface_h tbm_surface) {
-  FT_LOG(Error) << "CreateImage!";
   tbm_surface_info_s tbm_surface_info;
   tbm_surface_get_info(tbm_surface, &tbm_surface_info);
   vk_format_ = ConvertFormat(tbm_surface_info.format);
-  FT_LOG(Error) << "format_ : " << vk_format_;
 
   VkImageCreateInfo image_create_info = {};
   image_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -54,7 +52,6 @@ bool ExternalTextureSurfaceVulkanBufferMap::CreateImage(
 }
 
 void ExternalTextureSurfaceVulkanBufferMap::ReleaseImage() {
-  FT_LOG(Error) << "ReleaseImage!";
   if (vk_image_ != VK_NULL_HANDLE) {
     vkDestroyImage(static_cast<VkDevice>(vulkan_renderer_->GetDeviceHandle()),
                    vk_image_, nullptr);
@@ -78,7 +75,6 @@ bool ExternalTextureSurfaceVulkanBufferMap::AllocateMemory(
                       VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
                           VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
                       memory_type_index)) {
-    FT_LOG(Error) << "Fail to find memory type";
     return false;
   }
   VkMemoryAllocateInfo alloc_info{};
@@ -92,7 +88,6 @@ bool ExternalTextureSurfaceVulkanBufferMap::AllocateMemory(
     return false;
   }
   if (vk_format_ == VK_FORMAT_G8_B8R8_2PLANE_420_UNORM) {
-    FT_LOG(Error) << "IsYCbCrSupported : " << IsYCbCrSupported();
     return MapNV12(memory_requirements, tbm_surface);
   } else {
     FT_LOG(Error) << "Not support format...";
@@ -107,7 +102,6 @@ bool ExternalTextureSurfaceVulkanBufferMap::IsYCbCrSupported() {
           vulkan_renderer_->GetPhysicalDeviceHandle()),
       vk_format_, &format_properties);
   auto lin_flags = format_properties.linearTilingFeatures;
-  FT_LOG(Error) << "IsYCbCrSupported::lin_flags : " << lin_flags;
   if (!(lin_flags & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT) ||
       !(lin_flags & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT) ||
       !(lin_flags &
@@ -128,18 +122,6 @@ bool ExternalTextureSurfaceVulkanBufferMap::MapNV12(
       TBM_SURFACE_ERROR_NONE) {
     FT_LOG(Error) << "Fail to map tbm surface";
     return false;
-  }
-
-  FT_LOG(Error) << " width : " << tbm_surface_info.width
-                << ", height : " << tbm_surface_info.height
-                << ", size : " << tbm_surface_info.size;
-  for (uint32_t i = 0; i < tbm_surface_info.num_planes; i++) {
-    FT_LOG(Error) << "planes[" << i
-                  << "] stride : " << tbm_surface_info.planes[i].stride;
-    FT_LOG(Error) << "planes[" << i
-                  << "] size : " << tbm_surface_info.planes[i].size;
-    FT_LOG(Error) << "planes[" << i
-                  << "] offset : " << tbm_surface_info.planes[i].offset;
   }
 
   void* mapped_buffer;
@@ -166,7 +148,7 @@ bool ExternalTextureSurfaceVulkanBufferMap::MapNV12(
   uint8_t* bufferData =
       reinterpret_cast<uint8_t*>(mapped_buffer) + y_layout.offset;
   for (size_t i = 0; i < tbm_surface_info.height; i++) {
-    memcpy(bufferData,
+    memcpy(bufferData + i * y_layout.rowPitch,
            tbm_surface_info.planes[0].ptr + tbm_surface_info.planes[0].offset +
                i * tbm_surface_info.planes[0].stride,
            tbm_surface_info.width * sizeof(uint8_t));
@@ -176,18 +158,13 @@ bool ExternalTextureSurfaceVulkanBufferMap::MapNV12(
   vkGetImageSubresourceLayout(
       static_cast<VkDevice>(vulkan_renderer_->GetDeviceHandle()), vk_image_,
       &subresource, &uv_layout);
-  FT_LOG(Error) << "uv_layout offset : " << uv_layout.offset
-                << ", rowPitch : " << uv_layout.rowPitch
-                << ", size : " << uv_layout.size;
   bufferData = reinterpret_cast<uint8_t*>(mapped_buffer) + uv_layout.offset;
-
   for (size_t i = 0; i < tbm_surface_info.height / 2; i++) {
-    memcpy(bufferData,
+    memcpy(bufferData + i * uv_layout.rowPitch,
            tbm_surface_info.planes[1].ptr + tbm_surface_info.planes[1].offset +
                i * tbm_surface_info.planes[1].stride,
            tbm_surface_info.width * sizeof(uint8_t));
   }
-
   tbm_surface_unmap(tbm_surface);
 
   VkMappedMemoryRange flush_range;
@@ -223,7 +200,6 @@ uint64_t ExternalTextureSurfaceVulkanBufferMap::GetAllocSize() {
   vkGetImageMemoryRequirements(
       static_cast<VkDevice>(vulkan_renderer_->GetDeviceHandle()), vk_image_,
       &memory_requirements);
-  FT_LOG(Error) << "GetAllocSize : " << memory_requirements.size;
   return memory_requirements.size;
 }
 

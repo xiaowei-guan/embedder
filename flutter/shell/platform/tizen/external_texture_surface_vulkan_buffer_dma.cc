@@ -26,7 +26,6 @@ uint64_t ExternalTextureSurfaceVulkanBufferDma::GetAllocSize() {
   vkGetImageMemoryRequirements(
       static_cast<VkDevice>(vulkan_renderer_->GetDeviceHandle()),
       texture_image_, &memory_requirements);
-  FT_LOG(Error) << "GetAllocSize : " << memory_requirements.size;
   return memory_requirements.size;
 }
 
@@ -52,13 +51,12 @@ VkDeviceMemory ExternalTextureSurfaceVulkanBufferDma::GetMemory() {
 }
 
 VkResult GetMemoryFdPropertiesKHR(
-    VkInstance instance,
     VkDevice device,
     VkExternalMemoryHandleTypeFlagBits handleType,
     int fd,
     VkMemoryFdPropertiesKHR* pMemoryFdProperties) {
-  auto func = (PFN_vkGetMemoryFdPropertiesKHR)vkGetInstanceProcAddr(
-      instance, "vkGetMemoryFdPropertiesKHR");
+  auto func = (PFN_vkGetMemoryFdPropertiesKHR)vkGetDeviceProcAddr(
+      device, "vkGetMemoryFdPropertiesKHR");
   if (func != nullptr) {
     return func(device, handleType, fd, pMemoryFdProperties);
   } else {
@@ -68,11 +66,9 @@ VkResult GetMemoryFdPropertiesKHR(
 
 bool ExternalTextureSurfaceVulkanBufferDma::CreateImage(
     tbm_surface_h tbm_surface) {
-  FT_LOG(Error) << "CreateImage!";
   tbm_surface_info_s tbm_surface_info;
   tbm_surface_get_info(tbm_surface, &tbm_surface_info);
   texture_format_ = ConvertFormat(tbm_surface_info.format);
-  FT_LOG(Error) << "format_ : " << texture_format_;
 
   VkExternalMemoryImageCreateInfoKHR external_image_create_info = {};
   external_image_create_info.sType =
@@ -95,7 +91,7 @@ bool ExternalTextureSurfaceVulkanBufferDma::CreateImage(
                             VK_IMAGE_USAGE_TRANSFER_DST_BIT |
                             VK_IMAGE_USAGE_SAMPLED_BIT;
   image_create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-  image_create_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+  image_create_info.initialLayout = VK_IMAGE_LAYOUT_PREINITIALIZED;
   image_create_info.pNext = &external_image_create_info;
   if (vkCreateImage(static_cast<VkDevice>(vulkan_renderer_->GetDeviceHandle()),
                     &image_create_info, nullptr,
@@ -111,8 +107,8 @@ bool ExternalTextureSurfaceVulkanBufferDma::GetFdMemoryTypeIndex(
     uint32_t& index_out) {
   VkMemoryFdPropertiesKHR memory_fd_properties = {};
   memory_fd_properties.sType = VK_STRUCTURE_TYPE_MEMORY_FD_PROPERTIES_KHR;
+
   if (GetMemoryFdPropertiesKHR(
-          static_cast<VkInstance>(vulkan_renderer_->GetInstanceHandle()),
           static_cast<VkDevice>(vulkan_renderer_->GetDeviceHandle()),
           VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT, fd,
           &memory_fd_properties) != VK_SUCCESS) {
@@ -131,32 +127,27 @@ bool ExternalTextureSurfaceVulkanBufferDma::GetFdMemoryTypeIndex(
 
 bool ExternalTextureSurfaceVulkanBufferDma::AllocateMemory(
     tbm_surface_h tbm_surface) {
-  FT_LOG(Error) << "AllocateMemory!";
   tbm_bo bo = tbm_surface_internal_get_bo(tbm_surface, 0);
-  uint32_t fd = tbm_bo_get_handle(bo, TBM_DEVICE_3D).u32;
+  int bo_fd = tbm_bo_export_fd(bo);
+  int bo_size = tbm_bo_size(bo);
+
+  uint32_t memory_type_index = -1;
+  if (!GetFdMemoryTypeIndex(bo_fd, memory_type_index)) {
+    FT_LOG(Error) << "Fail to get memory type index";
+    return false;
+  }
 
   VkImportMemoryFdInfoKHR import_memory_fd_info = {};
   import_memory_fd_info.sType = VK_STRUCTURE_TYPE_IMPORT_MEMORY_FD_INFO_KHR;
   import_memory_fd_info.handleType =
       VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;
-  import_memory_fd_info.fd = fd;
-
-  uint32_t memory_type_index;
-  if (!GetFdMemoryTypeIndex(fd, memory_type_index)) {
-    FT_LOG(Error) << "Fail to get memory type index";
-    return false;
-  }
-
-  const off_t dma_buf_size = lseek(fd, 0, SEEK_END);
-  if (dma_buf_size < 0) {
-    FT_LOG(Error) << "Failed to get DMA Buf size.";
-    return false;
-  }
+  import_memory_fd_info.fd = bo_fd;
+  import_memory_fd_info.pNext = nullptr;
 
   VkMemoryAllocateInfo alloc_info{};
   alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
   alloc_info.pNext = &import_memory_fd_info;
-  alloc_info.allocationSize = static_cast<uint64_t>(dma_buf_size);
+  alloc_info.allocationSize = static_cast<uint64_t>(bo_size);
   alloc_info.memoryTypeIndex = memory_type_index;
   if (vkAllocateMemory(
           static_cast<VkDevice>(vulkan_renderer_->GetDeviceHandle()),
@@ -179,7 +170,6 @@ bool ExternalTextureSurfaceVulkanBufferDma::BindImageMemory(
 }
 
 void ExternalTextureSurfaceVulkanBufferDma::ReleaseImage() {
-  FT_LOG(Error) << "ReleaseImage!";
   if (texture_image_ != VK_NULL_HANDLE) {
     vkDestroyImage(static_cast<VkDevice>(vulkan_renderer_->GetDeviceHandle()),
                    texture_image_, nullptr);
@@ -189,6 +179,77 @@ void ExternalTextureSurfaceVulkanBufferDma::ReleaseImage() {
     vkFreeMemory(static_cast<VkDevice>(vulkan_renderer_->GetDeviceHandle()),
                  texture_device_memory_, nullptr);
     texture_device_memory_ = VK_NULL_HANDLE;
+  }
+}
+
+bool ExternalTextureSurfaceVulkanBufferDma::IsYCbCrSupported() {
+  VkFormatProperties format_properties;
+  vkGetPhysicalDeviceFormatProperties(
+      static_cast<VkPhysicalDevice>(
+          vulkan_renderer_->GetPhysicalDeviceHandle()),
+      texture_format_, &format_properties);
+  auto lin_flags = format_properties.linearTilingFeatures;
+  FT_LOG(Error) << "IsYCbCrSupported::lin_flags : " << lin_flags;
+  if (!(lin_flags & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT) ||
+      !(lin_flags & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT) ||
+      !(lin_flags &
+        VK_FORMAT_FEATURE_SAMPLED_IMAGE_YCBCR_CONVERSION_LINEAR_FILTER_BIT) ||
+      !(lin_flags & VK_FORMAT_FEATURE_COSITED_CHROMA_SAMPLES_BIT)) {
+    // VK_FORMAT_G8_B8R8_2PLANE_420_UNORM is not supported
+    return false;
+  }
+  return true;
+}
+
+void ExternalTextureSurfaceVulkanBufferDma::CheckFormat(VkFormat format) {
+  VkFormatProperties properties;
+  vkGetPhysicalDeviceFormatProperties(
+      static_cast<VkPhysicalDevice>(
+          vulkan_renderer_->GetPhysicalDeviceHandle()),
+      format, &properties);
+
+  if ((properties.linearTilingFeatures &
+       (VK_FORMAT_FEATURE_MIDPOINT_CHROMA_SAMPLES_BIT |
+        VK_FORMAT_FEATURE_COSITED_CHROMA_SAMPLES_BIT)) == 0) {
+    FT_LOG(Error) << "Linear doesn't support YCbCr conversions!";
+  }
+  if ((properties.linearTilingFeatures &
+       VK_FORMAT_FEATURE_MIDPOINT_CHROMA_SAMPLES_BIT) == 0) {
+    FT_LOG(Error) << "Linear doesn't support midpoint!";
+  }
+  if ((properties.linearTilingFeatures &
+       VK_FORMAT_FEATURE_COSITED_CHROMA_SAMPLES_BIT) == 0) {
+    FT_LOG(Error) << "Linear doesn't support cosited!";
+  }
+  if ((properties.linearTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT) ==
+      0)
+    FT_LOG(Error) << "Linear doesn't support sampling";
+  if ((properties.linearTilingFeatures &
+       VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT) == 0)
+    FT_LOG(Error) << "Linear doesn't support linear texture filtering";
+  if ((properties.linearTilingFeatures & VK_FORMAT_FEATURE_DISJOINT_BIT) == 0) {
+    FT_LOG(Error) << "Linear doesn't support disjoint planes";
+  }
+
+  if ((properties.optimalTilingFeatures &
+       (VK_FORMAT_FEATURE_MIDPOINT_CHROMA_SAMPLES_BIT |
+        VK_FORMAT_FEATURE_COSITED_CHROMA_SAMPLES_BIT)) == 0) {
+    FT_LOG(Error) << "Optimal doesn't support YCbCr conversions!";
+  }
+  if ((properties.optimalTilingFeatures &
+       VK_FORMAT_FEATURE_MIDPOINT_CHROMA_SAMPLES_BIT) == 0) {
+    FT_LOG(Error) << "Optimal doesn't support midpoint!";
+  }
+  if ((properties.optimalTilingFeatures &
+       VK_FORMAT_FEATURE_COSITED_CHROMA_SAMPLES_BIT) == 0) {
+    FT_LOG(Error) << "Optimal doesn't support cosited!";
+  }
+  if ((properties.optimalTilingFeatures &
+       VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT) == 0)
+    FT_LOG(Error) << "Optimal doesn't support sampling";
+  if ((properties.optimalTilingFeatures & VK_FORMAT_FEATURE_DISJOINT_BIT) ==
+      0) {
+    FT_LOG(Error) << "Optimal doesn't support disjoint planes";
   }
 }
 

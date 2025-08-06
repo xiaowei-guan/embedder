@@ -29,6 +29,8 @@ class ExternalTextureSurfaceVulkanBufferDma
 
  private:
   bool GetFdMemoryTypeIndex(int fd, uint32_t& index_out);
+  bool IsYCbCrSupported();
+  void CheckFormat(VkFormat format);
   TizenRendererVulkan* vulkan_renderer_ = nullptr;
   VkFormat texture_format_ = VK_FORMAT_UNDEFINED;
   VkImage texture_image_ = VK_NULL_HANDLE;

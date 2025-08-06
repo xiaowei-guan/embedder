@@ -136,7 +136,7 @@ bool TizenRendererVulkan::CreateInstance() {
       .applicationVersion = VK_MAKE_VERSION(1, 0, 0),
       .pEngineName = "Tizen Embedder",
       .engineVersion = VK_MAKE_VERSION(1, 0, 0),
-      .apiVersion = VK_API_VERSION_1_0,
+      .apiVersion = VK_API_VERSION_1_1,
   };
   VkInstanceCreateInfo create_info = {};
   create_info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
@@ -362,6 +362,11 @@ bool TizenRendererVulkan::PickPhysicalDevice() {
         score += 1 << 29;
         supported_extensions.push_back(
             VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME);
+      }
+      else if(strcmp(available_extension.extensionName, VK_KHR_SAMPLER_YCBCR_CONVERSION_EXTENSION_NAME) == 0){
+        supported_extensions.push_back(VK_KHR_SAMPLER_YCBCR_CONVERSION_EXTENSION_NAME);
+      }else if(strcmp(available_extension.extensionName, VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME) == 0){
+        supported_extensions.push_back(VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME);
       }
     }
     // Skip physical devices that don't have swapchain support.
