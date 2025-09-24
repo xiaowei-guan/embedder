@@ -11,7 +11,7 @@
 
 namespace flutter {
 
-class ExternalTexturePixelEvasGL : public ExternalTexture {
+class ExternalTexturePixelEvasGL : public ExternalGLTexture {
  public:
   ExternalTexturePixelEvasGL(
       FlutterDesktopPixelBufferTextureCallback texture_callback,
@@ -19,9 +19,9 @@ class ExternalTexturePixelEvasGL : public ExternalTexture {
 
   ~ExternalTexturePixelEvasGL() = default;
 
-  bool PopulateTexture(size_t width,
-                       size_t height,
-                       FlutterOpenGLTexture* opengl_texture) override;
+  bool PopulateOpenGLTexture(size_t width,
+                             size_t height,
+                             FlutterOpenGLTexture* opengl_texture) override;
 
   bool CopyPixelBuffer(size_t& width, size_t& height);
 

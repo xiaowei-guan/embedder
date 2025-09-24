@@ -11,7 +11,7 @@ EVAS_GL_GLOBAL_GLES2_DECLARE();
 
 namespace flutter {
 
-bool ExternalTexturePixelEvasGL::PopulateTexture(
+bool ExternalTexturePixelEvasGL::PopulateOpenGLTexture(
     size_t width,
     size_t height,
     FlutterOpenGLTexture* opengl_texture) {
@@ -33,7 +33,7 @@ bool ExternalTexturePixelEvasGL::PopulateTexture(
 ExternalTexturePixelEvasGL::ExternalTexturePixelEvasGL(
     FlutterDesktopPixelBufferTextureCallback texture_callback,
     void* user_data)
-    : ExternalTexture(),
+    : ExternalGLTexture(),
       texture_callback_(texture_callback),
       user_data_(user_data) {}
 
