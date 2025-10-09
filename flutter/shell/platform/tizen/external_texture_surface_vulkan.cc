@@ -29,8 +29,7 @@ bool ExternalTextureSurfaceVulkan::CreateOrUpdateImage(
   }
 
   void* handle = descriptor->handle;
-  const tbm_surface_h tbm_surface =
-      reinterpret_cast<tbm_surface_h>(handle);
+  const tbm_surface_h tbm_surface = reinterpret_cast<tbm_surface_h>(handle);
   if (!vulkan_buffer_) {
     if (IsSupportDisjoint(tbm_surface)) {
       /** TODO as I konw, skia doesn't support disjoint,we need consider to
@@ -43,7 +42,7 @@ bool ExternalTextureSurfaceVulkan::CreateOrUpdateImage(
           vulkan_renderer_);
     }
   }
-  
+
   if (handle != last_surface_handle_) {
     vulkan_buffer_->ReleaseImage();
     tbm_surface_info_s tbm_surface_info;
